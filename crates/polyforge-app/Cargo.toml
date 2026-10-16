@@ -1,0 +1,17 @@
+[package]
+name = "polyforge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "polyforge"
+path = "src/main.rs"
+
+[dependencies]
+bevy = { workspace = true }
+polyforge-core = { path = "../polyforge-core" }
+polyforge-ops = { path = "../polyforge-ops" }
+polyforge-uv = { path = "../polyforge-uv" }
+polyforge-io = { path = "../polyforge-io" }
+polyforge-ui = { path = "../polyforge-ui" }
