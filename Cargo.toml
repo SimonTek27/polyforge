@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "crates/polyforge-core",
     "crates/polyforge-ops",
@@ -7,7 +8,7 @@ members = [
     "crates/polyforge-ui",
     "crates/polyforge-app",
 ]
-resolver = "2"
+default-members = ["crates/polyforge-app"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,15 +16,48 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 authors = ["PolyForge Contributors"]
 repository = "https://github.com/SimonTek27/polyforge"
+homepage = "https://github.com/SimonTek27/polyforge"
+description = "Open-source 3D polygon modeling tool built with Bevy"
+keywords = ["3d", "modeling", "bevy", "game-assets", "editor"]
+categories = ["graphics", "game-development", "multimedia"]
 
 [workspace.dependencies]
-bevy = "0.20"
+bevy = { version = "0.20", default-features = false, features = [
+    "3d",
+    "bevy_asset",
+    "bevy_scene",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_gltf",
+    "bevy_ui",
+    "bevy_text",
+    "bevy_winit",
+    "bevy_gizmos",
+    "multi_threaded",
+    "x11",
+    "wayland",
+    "default_font",
+] }
 bevy_egui = "0.43"
-serde = { version = "1", features = ["derive"] }
-thiserror = "2"
+glam = "0.29"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+log = "0.4"
+tracing = "0.1"
+
+polyforge-core = { path = "crates/polyforge-core" }
+polyforge-ops = { path = "crates/polyforge-ops" }
+polyforge-uv = { path = "crates/polyforge-uv" }
+polyforge-io = { path = "crates/polyforge-io" }
+polyforge-ui = { path = "crates/polyforge-ui" }
 
 [profile.dev]
 opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
