@@ -1,17 +1,21 @@
 //! # polyforge-io
-//!
-//! Import and export of 3D assets.
-//! Priority targets:
-//! - glTF / GLB (modern standard)
-//! - OBJ (simple interchange)
-//! - Additional game and CAD formats in the future
+//! Import and export of 3D assets and project files.
 
 use bevy::prelude::*;
 use polyforge_core::EditableMesh;
 use thiserror::Error;
 
-pub struct PolyForgeIoPlugin;
+pub mod obj;
+pub mod project;
+pub mod gltf_export;
+pub mod gltf_import;
 
+pub use obj::*;
+pub use project::*;
+pub use gltf_export::*;
+pub use gltf_import::*;
+
+pub struct PolyForgeIoPlugin;
 impl Plugin for PolyForgeIoPlugin {
     fn build(&self, _app: &mut App) {}
 }
@@ -30,7 +34,6 @@ pub enum IoError {
 
 pub type IoResult<T> = Result<T, IoError>;
 
-/// Placeholder: load a simple cube for testing.
 pub fn load_placeholder_cube() -> EditableMesh {
     EditableMesh::cube()
 }
