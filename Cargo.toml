@@ -6,6 +6,8 @@ members = [
     "crates/polyforge-uv",
     "crates/polyforge-io",
     "crates/polyforge-ui",
+    "crates/polyforge-cad",
+    "crates/polyforge-vector",
     "crates/polyforge-app",
 ]
 default-members = ["crates/polyforge-app"]
@@ -18,7 +20,7 @@ authors = ["PolyForge Contributors"]
 repository = "https://github.com/SimonTek27/polyforge"
 homepage = "https://github.com/SimonTek27/polyforge"
 description = "Open-source 3D polygon modeling tool built with Bevy"
-keywords = ["3d", "modeling", "bevy", "game-assets", "editor"]
+keywords = ["3d", "modeling", "bevy", "cad", "editor"]
 categories = ["graphics", "game-development", "multimedia"]
 
 [workspace.dependencies]
@@ -52,6 +54,8 @@ polyforge-ops = { path = "crates/polyforge-ops" }
 polyforge-uv = { path = "crates/polyforge-uv" }
 polyforge-io = { path = "crates/polyforge-io" }
 polyforge-ui = { path = "crates/polyforge-ui" }
+polyforge-cad = { path = "crates/polyforge-cad" }
+polyforge-vector = { path = "crates/polyforge-vector" }
 
 [profile.dev]
 opt-level = 1
