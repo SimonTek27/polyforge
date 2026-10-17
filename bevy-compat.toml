@@ -1,0 +1,18 @@
+# PolyForge Bevy compatibility registry
+# Bevy updates are always priority.
+
+[bevy]
+version = "0.20"
+verified = "0.20.0"
+migration_guide = "https://bevyengine.org/learn/migration-guides/0-19-to-0-20/"
+release_notes = "https://bevyengine.org/news/bevy-0-20/"
+msrv = "1.97.1"
+
+[companions]
+bevy_egui = "0.43"
+glam = "0.29"
+
+[policy]
+mode = "track_latest"
+overdue_days = 14
+priority = 1
