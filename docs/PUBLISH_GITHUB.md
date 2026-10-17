@@ -1,27 +1,20 @@
-# Pubblicare PolyForge su GitHub
+# Publish / sync to GitHub
 
-Il repository git locale è già inizializzato sul branch `main`.
+Repository: https://github.com/SimonTek27/polyforge
 
-## Opzione A – GitHub CLI
-
-```bash
-cd /path/to/polyforge
-gh auth login
-gh repo create polyforge --public --source=. --remote=origin --push \
-  --description "Open-source polygon modeling tool built with Bevy (Rust, GPL-3.0)"
-```
-
-## Opzione B – Interfaccia web + git
-
-1. Su https://github.com/new crea un repository vuoto chiamato `polyforge` (senza README).
-2. Poi:
+## Full sync (recommended)
 
 ```bash
-cd /path/to/polyforge
-git remote add origin https://github.com/SimonTek27/polyforge.git
+cd polyforge
+git remote -v
 git push -u origin main
+# if history diverged:
+# git push -u origin main --force
 ```
 
-## Licenza
+Prefer `gh auth login` or a PAT on a local machine for complete tree sync (all crates).
 
-GPL-3.0-or-later. Mantieni il file `LICENSE` nella root.
+## After push
+
+- Confirm `crates/polyforge-app/src/main.rs` and ops modules are on GitHub
+- CI: `.github/workflows/bevy-update-check.yml` runs weekly
