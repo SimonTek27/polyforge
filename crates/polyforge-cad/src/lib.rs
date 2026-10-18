@@ -1,55 +1,53 @@
-//! CadMode crate — parametric bodies, sketches, solver, assembly.
-pub mod assembly;
-pub mod body;
-pub mod boolean;
-pub mod constraints;
-pub mod feature;
-pub mod fillet;
-pub mod kernel;
-pub mod lsq_solver;
-pub mod params;
-pub mod recompute;
-pub mod sketch;
-pub mod sketch_tool;
-pub mod solver;
-pub mod step_export;
-pub mod tessellate;
-
-pub use assembly::*;
-pub use body::*;
-pub use boolean::*;
-pub use constraints::*;
-pub use feature::*;
-pub use fillet::*;
-pub use kernel::*;
-pub use lsq_solver::*;
-pub use params::*;
-pub use recompute::*;
-pub use sketch::*;
-pub use sketch_tool::*;
-pub use solver::*;
-pub use step_export::*;
-pub use tessellate::*;
+//! # polyforge-cad
+//!
+//! CadMode: parametric solid bodies, sketches, feature history, solvers, assembly.
+//! Tessellates to EditableMesh for the Bevy viewport.
+//! Real B-rep kernel (OCCT) is staged behind the cad_kernel feature.
 
 use bevy::prelude::*;
+use polyforge_core::EditableMesh;
 
-#[derive(Resource, Debug, Clone, Default)]
-pub struct CadWorkspace {
-    pub active_body: Option<Entity>,
-    pub editing_sketch: Option<CadFeatureId>,
-    pub last_error: Option<String>,
-    pub selected_curve: usize,
-    pub selected_feature: usize,
-}
+pub mod body;
+pub mod feature;
+pub mod sketch;
+pub mod tessellate;
+pub mod recompute;
+pub mod fillet;
+pub mod boolean;
+pub mod params;
+pub mod sketch_tool;
+pub mod constraints;
+pub mod solver;
+pub mod lsq_solver;
+pub mod assembly;
+pub mod kernel;
+pub mod step_export;
+
+pub use body::*;
+pub use feature::*;
+pub use sketch::*;
+pub use tessellate::*;
+pub use recompute::*;
+pub use fillet::*;
+pub use boolean::*;
+pub use params::*;
+pub use sketch_tool::*;
+pub use constraints::*;
+pub use solver::*;
+pub use lsq_solver::*;
+pub use assembly::*;
+pub use kernel::*;
+pub use step_export::*;
 
 pub struct PolyForgeCadPlugin;
 
 impl Plugin for PolyForgeCadPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CadWorkspace>()
+        app.register_type::<CadBody>()
+            .register_type::<CadFeatureId>()
+            .init_resource::<CadWorkspace>()
             .init_resource::<SketchToolState>()
             .init_resource::<ActiveKernel>()
-            .register_type::<CadBody>()
             .add_systems(
                 Update,
                 (
@@ -61,3 +59,38 @@ impl Plugin for PolyForgeCadPlugin {
             );
     }
 }
+
+#[derive(Resource, Debug, Clone, Default)]
+pub struct CadWorkspace {
+    pub active_body: Option<Entity>,
+    pub editing_sketch: Option<CadFeatureId>,
+    pub last_error: Option<String>,
+    pub selected_curve: usize,
+    pub selected_feature: usize,
+}
+
+#[derive(Component, Reflect, Debug, Clone, Default)]
+#[reflect(Component)]
+pub struct CadBody {
+    pub name: String,
+    pub features: Vec<CadFeature>,
+    pub dirty: bool,
+}
+
+impl CadBody {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            features: Vec::new(),
+            dirty: true,
+        }
+    }
+
+    pub fn push_feature(&mut self, f: CadFeature) {
+        self.features.push(f);
+        self.dirty = true;
+    }
+}
+
+#[derive(Component, Debug, Clone, Default)]
+pub struct CadDisplayMesh(pub EditableMesh);
