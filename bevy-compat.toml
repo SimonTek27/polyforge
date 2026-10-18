@@ -1,5 +1,5 @@
-# PolyForge Bevy compatibility registry
-# Bevy updates are always priority.
+# PolyForge ↔ Bevy compatibility registry
+# RULE: Bevy updates are always priority.
 
 [bevy]
 version = "0.20"
