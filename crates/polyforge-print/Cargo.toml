@@ -1,0 +1,23 @@
+[package]
+name = "polyforge-print"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "3D printing: mesh slicing, printer profiles and G-code generation"
+
+[dependencies]
+glam = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+bevy = { workspace = true, optional = true }
+polyforge-core = { workspace = true, optional = true }
+
+[features]
+default = []
+# Bevy resource/plugin integration.
+bevy = ["dep:bevy"]
+# Bridge from PolyForge's EditableMesh into the slicer.
+mesh = ["bevy", "dep:polyforge-core"]

@@ -1,0 +1,23 @@
+[package]
+name = "polyforge-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Main application entry point for PolyForge"
+
+[[bin]]
+name = "polyforge"
+path = "src/main.rs"
+
+[dependencies]
+bevy = { workspace = true }
+bevy_egui = { workspace = true }
+polyforge-core = { workspace = true }
+polyforge-ops = { workspace = true }
+polyforge-uv = { workspace = true }
+polyforge-io = { workspace = true }
+polyforge-ui = { workspace = true }
+log = { workspace = true }
+polyforge-cad = { workspace = true }
+polyforge-vector = { workspace = true }
