@@ -11,3 +11,6 @@ bevy = { workspace = true }
 bevy_egui = { workspace = true }
 polyforge-core = { workspace = true }
 log = { workspace = true }
+polyforge-uv = { workspace = true }
+polyforge-cad = { workspace = true }
+polyforge-vector = { workspace = true }

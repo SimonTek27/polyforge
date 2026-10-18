@@ -19,3 +19,5 @@ polyforge-uv = { workspace = true }
 polyforge-io = { workspace = true }
 polyforge-ui = { workspace = true }
 log = { workspace = true }
+polyforge-cad = { workspace = true }
+polyforge-vector = { workspace = true }
