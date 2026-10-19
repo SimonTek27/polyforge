@@ -1,0 +1,28 @@
+# Upstream ArtCraft apps integrated with PolyForge.
+# Run: bash scripts/sync_artcraft.sh
+
+[vectorcraft]
+repo = "https://github.com/storytold/vectorcraft.git"
+homepage = "https://getartcraft.com/apps/vectorcraft"
+license = "MIT OR Apache-2.0"
+pin_ref = "main"
+pin_sha = "a466625c8987550635cda951ebf36e08e1e80a56"
+last_checked = "2026-10-19"
+role = "VectorMode reference + optional external editor"
+polyforge_mode = "Vector"
+
+[photocraft]
+repo = "https://github.com/storytold/photocraft.git"
+homepage = "https://getartcraft.com/apps/photocraft"
+license = "MIT OR Apache-2.0"
+pin_ref = "main"
+pin_sha = "d95fdf3181c01ad41e95456091a394b105a9afb2"
+last_checked = "2026-10-19"
+role = "Raster / texture companion"
+polyforge_mode = "Photo"
+
+[policy]
+mode = "track_latest"
+max_commits_behind = 0
+vectorcraft_path = "vendor/vectorcraft"
+photocraft_path = "vendor/photocraft"

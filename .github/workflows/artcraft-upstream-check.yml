@@ -1,0 +1,20 @@
+name: ArtCraft upstream check
+
+on:
+  schedule:
+    - cron: "0 */12 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - "vendor/pins.toml"
+      - "scripts/sync_artcraft.sh"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check VectorCraft + PhotoCraft pins
+        run: |
+          chmod +x scripts/sync_artcraft.sh || true
+          bash scripts/sync_artcraft.sh --check
