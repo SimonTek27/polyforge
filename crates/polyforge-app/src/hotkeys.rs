@@ -36,7 +36,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::Digit1) {
         editor.selection_mode = SelectionMode::Vertex;
         editor.active_tool = Tool::Select;
-        if let Ok((_, mut sel)) = mesh_q.get_single_mut() {
+        if let Ok((_, mut sel)) = mesh_q.single_mut() {
             sel.edges.clear();
             sel.faces.clear();
         }
@@ -44,7 +44,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::Digit2) {
         editor.selection_mode = SelectionMode::Edge;
         editor.active_tool = Tool::Select;
-        if let Ok((_, mut sel)) = mesh_q.get_single_mut() {
+        if let Ok((_, mut sel)) = mesh_q.single_mut() {
             sel.vertices.clear();
             sel.faces.clear();
         }
@@ -52,7 +52,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::Digit3) {
         editor.selection_mode = SelectionMode::Face;
         editor.active_tool = Tool::Select;
-        if let Ok((_, mut sel)) = mesh_q.get_single_mut() {
+        if let Ok((_, mut sel)) = mesh_q.single_mut() {
             sel.vertices.clear();
             sel.edges.clear();
         }
@@ -60,7 +60,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::Digit4) {
         editor.selection_mode = SelectionMode::Cell;
         editor.active_tool = Tool::Select;
-        if let Ok((_, mut sel)) = mesh_q.get_single_mut() {
+        if let Ok((_, mut sel)) = mesh_q.single_mut() {
             sel.vertices.clear();
             sel.edges.clear();
         }
@@ -75,7 +75,7 @@ pub fn hotkey_system(
         && !keys.pressed(KeyCode::AltLeft)
         && !keys.pressed(KeyCode::AltRight)
     {
-        if let Ok((mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mesh, mut selection)) = mesh_q.single_mut() {
             match editor.selection_mode {
                 SelectionMode::Vertex => selection.select_all_vertices(mesh.vertices.len()),
                 SelectionMode::Face | SelectionMode::Cell => {
@@ -94,7 +94,7 @@ pub fn hotkey_system(
 
     // L → select linked cells (connected face region)
     if keys.just_pressed(KeyCode::KeyL) {
-        if let Ok((mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mesh, mut selection)) = mesh_q.single_mut() {
             if editor.selection_mode.uses_faces() && !selection.faces.is_empty() {
                 let linked = polyforge_core::expand_linked_faces(&mesh, &selection.faces);
                 selection.faces = linked;
@@ -104,7 +104,7 @@ pub fn hotkey_system(
 
     // = or NumpadAdd → grow cell/face selection by one ring
     if keys.just_pressed(KeyCode::Equal) || keys.just_pressed(KeyCode::NumpadAdd) {
-        if let Ok((mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mesh, mut selection)) = mesh_q.single_mut() {
             if editor.selection_mode.uses_faces() && !selection.faces.is_empty() {
                 selection.faces = polyforge_core::grow_face_selection(&mesh, &selection.faces);
             }
@@ -113,7 +113,7 @@ pub fn hotkey_system(
 
     // - or NumpadSubtract → shrink cell/face selection
     if keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::NumpadSubtract) {
-        if let Ok((mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mesh, mut selection)) = mesh_q.single_mut() {
             if editor.selection_mode.uses_faces() && !selection.faces.is_empty() {
                 selection.faces = polyforge_core::shrink_face_selection(&mesh, &selection.faces);
             }
@@ -124,7 +124,7 @@ pub fn hotkey_system(
         || (keys.just_pressed(KeyCode::KeyA)
             && (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight)))
     {
-        if let Ok((_, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((_, mut selection)) = mesh_q.single_mut() {
             selection.clear();
         }
     }
@@ -135,7 +135,7 @@ pub fn hotkey_system(
         && !(keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight)))
         || keys.just_pressed(KeyCode::Delete)
     {
-        if let Ok((mut mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, mut selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = delete_selection(&mut mesh, &mut selection);
         }
@@ -145,7 +145,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyE)
         && !(keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             if !selection.faces.is_empty() {
                 history.push(&mesh, &selection);
                 let _ = extrude_faces(&mut mesh, &selection, 0.25);
@@ -161,7 +161,7 @@ pub fn hotkey_system(
         && !keys.pressed(KeyCode::ControlLeft)
         && !keys.pressed(KeyCode::ControlRight)
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             if !selection.faces.is_empty() {
                 history.push(&mesh, &selection);
                 let _ = inset_faces(&mut mesh, &selection, 0.3);
@@ -174,7 +174,7 @@ pub fn hotkey_system(
         && !keys.pressed(KeyCode::ControlLeft)
         && !keys.pressed(KeyCode::ControlRight)
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             if !selection.edges.is_empty() {
                 history.push(&mesh, &selection);
                 let _ = split_edges(&mut mesh, &selection);
@@ -184,7 +184,7 @@ pub fn hotkey_system(
 
     // N → nudge faces along normal
     if keys.just_pressed(KeyCode::KeyN) {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             if !selection.faces.is_empty() {
                 history.push(&mesh, &selection);
                 let _ = move_faces_along_normal(&mut mesh, &selection, 0.1);
@@ -196,7 +196,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyR)
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = loop_cut_selection(&mut mesh, &selection, 0.5);
         }
@@ -206,7 +206,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyB)
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             if !selection.edges.is_empty() {
                 history.push(&mesh, &selection);
                 let _ = bevel_edges(&mut mesh, &selection, 0.15);
@@ -216,7 +216,7 @@ pub fn hotkey_system(
 
     // M → merge by distance
     if keys.just_pressed(KeyCode::KeyM) {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = merge_by_distance(&mut mesh, &selection, 0.05);
         }
@@ -224,7 +224,7 @@ pub fn hotkey_system(
 
     // F → fill face from selected vertices
     if keys.just_pressed(KeyCode::KeyF) {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             if selection.vertices.len() >= 3 {
                 history.push(&mesh, &selection);
                 let _ = fill_from_vertices(&mut mesh, &selection);
@@ -236,7 +236,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyD)
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = duplicate_selection(&mut mesh, &selection, Vec3::new(0.3, 0.0, 0.0));
         }
@@ -247,7 +247,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && !(keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, mut selection)) = mesh_q.single_mut() {
             if let Some(snap) = history.undo(&mesh, &selection) {
                 history.suppress = true;
                 *mesh = snap.mesh;
@@ -266,7 +266,7 @@ pub fn hotkey_system(
             && !keys.pressed(KeyCode::ShiftLeft)
             && !keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, mut selection)) = mesh_q.single_mut() {
             if let Some(snap) = history.redo(&mesh, &selection) {
                 history.suppress = true;
                 *mesh = snap.mesh;
@@ -281,7 +281,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mesh, _)) = mesh_q.get_single() {
+        if let Ok((mesh, _)) = mesh_q.single() {
             let ascii = std::path::Path::new("/home/workdir/artifacts/polyforge_export.stl");
             let bin = std::path::Path::new("/home/workdir/artifacts/polyforge_export_bin.stl");
             match write_stl_ascii(&mesh, ascii) {
@@ -298,7 +298,7 @@ pub fn hotkey_system(
     else if keys.just_pressed(KeyCode::KeyT)
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = triangulate_faces(&mut mesh, &selection);
         }
@@ -313,7 +313,7 @@ pub fn hotkey_system(
             && !keys.pressed(KeyCode::ControlLeft)
             && !keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = subdivide_faces(&mut mesh, &selection);
         }
@@ -323,7 +323,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyI)
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mesh, mut selection)) = mesh_q.single_mut() {
             match editor.selection_mode {
                 SelectionMode::Vertex | SelectionMode::Object => {
                     selection.invert_vertices(mesh.vertices.len());
@@ -344,7 +344,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = symmetrize(&mut mesh, &selection, SymAxis::X);
         }
@@ -355,7 +355,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mesh, _)) = mesh_q.get_single() {
+        if let Ok((mesh, _)) = mesh_q.single() {
             let path = std::path::Path::new("/home/workdir/artifacts/polyforge_export.obj");
             match write_obj_file(&mesh, path) {
                 Ok(()) => info!("Exported OBJ to {}", path.display()),
@@ -369,7 +369,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = bridge_edge_loops(&mut mesh, &selection);
         }
@@ -380,7 +380,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = solidify(&mut mesh, &selection, 0.1);
         }
@@ -390,7 +390,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::Delete)
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mut mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, mut selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             if !selection.faces.is_empty() {
                 let _ = dissolve_faces(&mut mesh, &selection);
@@ -406,7 +406,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
         && !(keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mesh, mut selection)) = mesh_q.single_mut() {
             if let Some(&seed) = selection.faces.iter().next() {
                 selection.faces = select_similar_faces(&mesh, seed, 0.95);
             }
@@ -417,7 +417,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyR)
         && (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight))
     {
-        if let Ok((mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mesh, mut selection)) = mesh_q.single_mut() {
             if let Some(&(a, b)) = selection.edges.iter().next() {
                 let ring = select_edge_ring(&mesh, a, b);
                 selection.clear();
@@ -433,7 +433,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && !(keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             for &(a, b) in &selection.edges {
                 mesh.toggle_seam(a, b);
@@ -446,7 +446,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyS)
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mesh, _)) = mesh_q.get_single() {
+        if let Ok((mesh, _)) = mesh_q.single() {
             let path = std::path::Path::new("/home/workdir/artifacts/polyforge_project.json");
             match save_project(&mesh, path, "PolyForge Scene") {
                 Ok(()) => info!("Saved project to {}", path.display()),
@@ -459,7 +459,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyO)
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mut mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, mut selection)) = mesh_q.single_mut() {
             let path = std::path::Path::new("/home/workdir/artifacts/polyforge_project.json");
             match load_project(path) {
                 Ok((name, loaded)) => {
@@ -479,7 +479,7 @@ pub fn hotkey_system(
         && !(keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && !(keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight))
     {
-        if let Ok((mut mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, mut selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let prim = create_plane(1.0);
             let base = mesh.vertices.len() as u32;
@@ -512,7 +512,7 @@ pub fn hotkey_system(
 
     // V → rip vertices
     if keys.just_pressed(KeyCode::KeyV) {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = rip_vertices(&mut mesh, &selection, Vec3::new(0.15, 0.0, 0.0));
         }
@@ -522,7 +522,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyG)
         && (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = slide_vertices(&mut mesh, &selection, 0.15);
         }
@@ -545,7 +545,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mesh, _)) = mesh_q.get_single() {
+        if let Ok((mesh, _)) = mesh_q.single() {
             let path = std::path::Path::new("/home/workdir/artifacts/polyforge_export.gltf");
             match write_gltf_file(&mesh, path) {
                 Ok(()) => info!("Exported glTF to {}", path.display()),
@@ -558,7 +558,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyS)
         && (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             snap_vertices_to_nearest(&mut mesh, &selection, 0.5);
         }
@@ -569,7 +569,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
         && !(keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
     {
-        if let Ok((mut mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, mut selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let prim = create_torus(16, 8, 0.6, 0.2);
             let base = mesh.vertices.len() as u32;
@@ -598,7 +598,7 @@ pub fn hotkey_system(
         && !keys.pressed(KeyCode::ControlLeft)
         && !keys.pressed(KeyCode::ControlRight)
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = knife_cut_x(&mut mesh, &selection);
         }
@@ -608,7 +608,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyW)
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let verts = selection.effective_vertices(&mesh.faces);
             let mut origin = Vec3::ZERO;
@@ -634,7 +634,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, mut selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, mut selection)) = mesh_q.single_mut() {
             let path = std::path::Path::new("/home/workdir/artifacts/polyforge_export.gltf");
             match read_gltf_file(path) {
                 Ok(loaded) => {
@@ -653,7 +653,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             scale_individual_origins(&mut mesh, &selection, 1.1);
         }
@@ -664,7 +664,7 @@ pub fn hotkey_system(
         && ((keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
             || (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight)))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let _ = rip_fill(&mut mesh, &selection, Vec3::new(0.15, 0.0, 0.0));
         }
@@ -687,7 +687,7 @@ pub fn hotkey_system(
         && !(keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && !(keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let mode = match editor.snap_mode {
                 1 => SnapTarget::Vertex,
@@ -710,7 +710,7 @@ pub fn hotkey_system(
     if keys.just_pressed(KeyCode::KeyQ)
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
             let verts = selection.effective_vertices(&mesh.faces);
             let mut origin = Vec3::ZERO;
@@ -745,7 +745,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             for &f in &selection.faces {
                 mesh.set_face_material(f, 1);
             }
@@ -756,7 +756,7 @@ pub fn hotkey_system(
         && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
         && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
     {
-        if let Ok((mut mesh, selection)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, selection)) = mesh_q.single_mut() {
             for &f in &selection.faces {
                 mesh.set_face_material(f, 2);
             }

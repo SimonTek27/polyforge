@@ -21,3 +21,5 @@ polyforge-ui = { workspace = true }
 log = { workspace = true }
 polyforge-cad = { workspace = true }
 polyforge-vector = { workspace = true }
+polyforge-print = { workspace = true, features = ["mesh"] }
+serde_json = { workspace = true }

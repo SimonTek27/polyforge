@@ -60,7 +60,7 @@ pub fn separate_object_system(
     if keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight) {
         return;
     }
-    let Ok((mut mesh, mut selection, transform)) = mesh_q.get_single_mut() else {
+    let Ok((mut mesh, mut selection, transform)) = mesh_q.single_mut() else {
         return;
     };
     if selection.faces.is_empty() {
@@ -106,7 +106,7 @@ pub fn join_active_objects_system(
     {
         return;
     }
-    let Ok((_ae, mut mesh, mut selection, a_tf)) = active_q.get_single_mut() else {
+    let Ok((_ae, mut mesh, selection, a_tf)) = active_q.single_mut() else {
         return;
     };
     history.push(&mesh, &selection);
@@ -185,7 +185,7 @@ pub fn lasso_select_system(
     if mouse.just_released(MouseButton::Left) && lasso.points.len() >= 3 {
         lasso.closed = true;
         let Ok((camera, cam_tf)) = camera_q.single() else { return };
-        let Ok((mesh, mut selection, transform)) = mesh_q.get_single_mut() else { return };
+        let Ok((mesh, mut selection, transform)) = mesh_q.single_mut() else { return };
         if !(keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight)) {
             selection.clear();
         }
@@ -242,7 +242,7 @@ pub fn mirror_modifier_system(
     if !keys.just_pressed(KeyCode::KeyM) || !ctrl {
         return;
     }
-    let Ok((entity, mut mesh, mut selection, stack)) = q.get_single_mut() else {
+    let Ok((entity, mut mesh, mut selection, stack)) = q.single_mut() else {
         return;
     };
     if shift && !alt {
@@ -261,6 +261,7 @@ pub fn mirror_modifier_system(
             // apply one-shot mirror via symmetrize path
             let mut st = ModifierStack {
                 mirror: Some(MirrorModifier::default()),
+                ..Default::default()
             };
             apply_mirror(&mut mesh, &mut st);
             info!("Mirror applied (no stack)");
@@ -279,7 +280,7 @@ pub fn setup_plugin_commands(registry: Res<CommandRegistry>, mut macros: ResMut<
 pub fn plugin_command_hotkeys(
     keys: Res<ButtonInput<KeyCode>>,
     registry: Res<CommandRegistry>,
-    mut world_opt: ParamSet<(Query<&mut Selection>, )>,
+    world_opt: ParamSet<(Query<&mut Selection>, )>,
 ) {
     // F9 runs selection.clear_all via registry needs World - use exclusive system pattern simplified
     let _ = (keys, registry, world_opt);
@@ -314,7 +315,7 @@ pub fn interactive_knife_system(
 
     // Project onto plane through mesh center, facing camera
     let center = {
-        if let Ok((mesh, _, transform)) = mesh_q.get_single() {
+        if let Ok((mesh, _, transform)) = mesh_q.single() {
             transform.transform_point(mesh.center())
         } else {
             Vec3::ZERO
@@ -343,9 +344,9 @@ pub fn interactive_knife_system(
     if mouse.just_released(MouseButton::Left) && knife.world_points.len() >= 2 {
         let points = knife.world_points.clone();
         let view_n = *cam_tf.forward();
-        if let Ok((mut mesh, mut selection, transform)) = mesh_q.get_single_mut() {
+        if let Ok((mut mesh, mut selection, transform)) = mesh_q.single_mut() {
             history.push(&mesh, &selection);
-            let inv = transform.compute_matrix().inverse();
+            let inv = transform.to_matrix().inverse();
             for seg in points.windows(2) {
                 let a = inv.transform_point3(seg[0]);
                 let b = inv.transform_point3(seg[1]);
@@ -377,7 +378,7 @@ pub fn array_modifier_hotkeys(
     let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
     // Ctrl+Shift+Y = add array
     if keys.just_pressed(KeyCode::KeyY) && ctrl && shift && !alt {
-        let Ok((entity, _, _, stack)) = q.get_single_mut() else { return };
+        let Ok((entity, _, _, stack)) = q.single_mut() else { return };
         let mut st = stack.map(|s| s.clone()).unwrap_or_default();
         st.array = Some(ArrayModifier::default());
         commands.entity(entity).insert(st);
@@ -385,7 +386,7 @@ pub fn array_modifier_hotkeys(
     }
     // Ctrl+Alt+Y = apply all modifiers
     if keys.just_pressed(KeyCode::KeyY) && ctrl && alt {
-        let Ok((_, mut mesh, mut selection, stack)) = q.get_single_mut() else { return };
+        let Ok((_, mut mesh, mut selection, stack)) = q.single_mut() else { return };
         history.push(&mesh, &selection);
         if let Some(mut st) = stack {
             apply_all_modifiers(&mut mesh, &mut st);

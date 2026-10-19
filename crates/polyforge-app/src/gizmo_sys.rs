@@ -1,7 +1,8 @@
 //! Gizmo interaction & draw (Phase 26).
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseButton, MouseMotion};
-use polyforge_core::{GizmoState, GizmoMode, GizmoAxis, draw_gizmo, EditorState, SelectionMode, EditableMesh, Selection, ActiveMesh, MarqueeState, VertexDragState, ProportionalEdit};
+use polyforge_core::{GizmoState, GizmoMode, GizmoAxis, draw_gizmo, EditorState, EditableMesh, Selection, ActiveMesh, MarqueeState, VertexDragState, ProportionalEdit};
+use polyforge_ops::{move_selection, translate_proportional, translate_vertices_snapped, rotate_vertices, scale_vertices};
 
 /// Distance in pixels before a drag/marquee begins.
 pub const DRAG_THRESHOLD_PX: f32 = 4.0;
@@ -11,7 +12,7 @@ pub fn update_gizmo_origin(
     query: Query<(&EditableMesh, &Selection, &Transform), With<ActiveMesh>>,
     camera_q: Query<&Transform, With<Camera3d>>,
 ) {
-    let Ok((mesh, selection, transform)) = query.get_single() else {
+    let Ok((mesh, selection, transform)) = query.single() else {
         return;
     };
 
@@ -36,7 +37,7 @@ pub fn update_gizmo_origin(
 
     gizmo.origin = transform.transform_point(local_center);
 
-    if let Ok(cam_tf) = camera_q.get_single() {
+    if let Ok(cam_tf) = camera_q.single() {
         let dist = cam_tf.translation.distance(gizmo.origin);
         gizmo.size = (dist * 0.15).clamp(0.4, 4.0);
     }
@@ -63,13 +64,13 @@ pub fn gizmo_interaction_system(
         return;
     }
 
-    let Ok(window) = windows.get_single() else {
+    let Ok(window) = windows.single() else {
         return;
     };
     let Some(cursor) = window.cursor_position() else {
         return;
     };
-    let Ok((camera, cam_gt)) = camera_q.get_single() else {
+    let Ok((camera, cam_gt)) = camera_q.single() else {
         return;
     };
 
@@ -104,7 +105,7 @@ pub fn gizmo_interaction_system(
         return;
     }
 
-    let Ok((mut mesh, selection, transform)) = mesh_q.get_single_mut() else {
+    let Ok((mut mesh, selection, transform)) = mesh_q.single_mut() else {
         return;
     };
 
@@ -161,7 +162,7 @@ pub fn gizmo_interaction_system(
                 _ => cam_gt.forward().as_vec3(),
             };
             let rot = Quat::from_axis_angle(axis, angle);
-            let pivot = transform.compute_matrix().inverse().transform_point3(gizmo.origin);
+            let pivot = transform.to_matrix().inverse().transform_point3(gizmo.origin);
             let _ = rotate_vertices(&mut mesh, &tmp_sel, rot, pivot);
         }
         GizmoMode::Scale => {
@@ -172,7 +173,7 @@ pub fn gizmo_interaction_system(
                 GizmoAxis::Z => Vec3::new(1.0, 1.0, factor),
                 _ => Vec3::splat(factor),
             };
-            let pivot = transform.compute_matrix().inverse().transform_point3(gizmo.origin);
+            let pivot = transform.to_matrix().inverse().transform_point3(gizmo.origin);
             let _ = scale_vertices(&mut mesh, &tmp_sel, scale, pivot);
         }
     }

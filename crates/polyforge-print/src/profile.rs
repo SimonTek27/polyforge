@@ -127,7 +127,10 @@ impl PrinterProfile {
         serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 
-    pub fn from_json(value: &serde_json::Value) -> Result<Self, serde_json::Error> {
+    /// Display name of this printer's firmware dialect.
+    pub fn gcode_flavor_label(&self) -> &'static str {
+        self.gcode_flavor.label()
+    }    pub fn from_json(value: &serde_json::Value) -> Result<Self, serde_json::Error> {
         serde_json::from_value(value.clone())
     }
 

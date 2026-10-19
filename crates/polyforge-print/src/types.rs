@@ -186,6 +186,19 @@ impl GCodeFlavor {
     pub fn uses_relative_extrusion(self) -> bool {
         matches!(self, GCodeFlavor::Klipper | GCodeFlavor::RepRap)
     }
+
+    /// Human-readable firmware name.
+    pub fn label(self) -> &'static str {
+        match self {
+            GCodeFlavor::Marlin => "Marlin",
+            GCodeFlavor::RepRap => "RepRap",
+            GCodeFlavor::Klipper => "Klipper",
+            GCodeFlavor::Bambu => "Bambu",
+            GCodeFlavor::Prusa => "Prusa",
+            GCodeFlavor::Smoothieware => "Smoothieware",
+            GCodeFlavor::Mach3 => "Mach3",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

@@ -1,10 +1,11 @@
 //! Pointer selection: drag, marquee, click, circle, lasso (Phase 26).
 use bevy::prelude::*;
-use bevy::input::mouse::{MouseButton, MouseMotion};
 use polyforge_core::*;
 use crate::gizmo_sys::DRAG_THRESHOLD_PX;
+use polyforge_ops::{move_selection, select_edge_loop};
 
-struct PointerGesture {
+#[derive(Default)]
+pub struct PointerGesture {
     /// Left button is held.
     pressed: bool,
     start_pos: Vec2,
@@ -18,8 +19,6 @@ struct PointerGesture {
 enum GestureKind {
     #[default]
     None,
-    /// Click selection (no significant drag).
-    Click,
     /// Screen-space marquee.
     Marquee,
     /// Free move of selected vertices in the camera plane.
@@ -38,13 +37,13 @@ pub fn pointer_input_system(
     mut drag: ResMut<VertexDragState>,
     mut mesh_q: Query<(&mut EditableMesh, &mut Selection, &Transform), With<ActiveMesh>>,
 ) {
-    let Ok(window) = windows.get_single() else {
+    let Ok(window) = windows.single() else {
         return;
     };
     let Some(cursor) = window.cursor_position() else {
         return;
     };
-    let Ok((camera, cam_gt)) = camera_q.get_single() else {
+    let Ok((camera, cam_gt)) = camera_q.single() else {
         return;
     };
 
@@ -80,7 +79,7 @@ pub fn pointer_input_system(
                 || editor.active_tool == Tool::Move;
 
             let has_selection = mesh_q
-                .get_single()
+                .single()
                 .map(|(mesh, sel, _)| !sel.effective_vertices(&mesh.faces).is_empty())
                 .unwrap_or(false);
 
@@ -143,7 +142,7 @@ pub fn pointer_input_system(
             GestureKind::VertexDrag => {
                 drag.active = false;
             }
-            GestureKind::None | GestureKind::Click => {
+            GestureKind::None => {
                 // Treat as a click selection
                 let alt_held = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
                 apply_click_selection(
@@ -178,7 +177,7 @@ pub fn apply_vertex_drag(
         return;
     }
 
-    let Ok((mut mesh, selection, transform)) = mesh_q.get_single_mut() else {
+    let Ok((mut mesh, selection, transform)) = mesh_q.single_mut() else {
         return;
     };
 
@@ -209,11 +208,11 @@ pub fn apply_marquee_selection(
     editor: &EditorState,
     additive: bool,
 ) {
-    let Ok((mesh, mut selection, transform)) = mesh_q.get_single_mut() else {
+    let Ok((mesh, mut selection, transform)) = mesh_q.single_mut() else {
         return;
     };
 
-    let world_from_local = transform.compute_matrix();
+    let world_from_local = transform.to_matrix();
 
     match editor.selection_mode {
         SelectionMode::Vertex | SelectionMode::Object => {
@@ -234,7 +233,7 @@ pub fn apply_marquee_selection(
         }
         SelectionMode::Edge => {
             let mut hits = Vec::new();
-            for (a, b) in extract_edges(mesh) {
+            for (a, b) in extract_edges(&mesh) {
                 let wa = world_from_local.transform_point3(mesh.vertices[a as usize]);
                 let wb = world_from_local.transform_point3(mesh.vertices[b as usize]);
                 // Edge is selected if both endpoints are inside, or the midpoint
@@ -284,7 +283,7 @@ pub fn apply_marquee_selection(
                 for h in hits {
                     seeds.insert(h);
                 }
-                let linked = polyforge_core::expand_linked_faces(mesh, &seeds);
+                let linked = polyforge_core::expand_linked_faces(&mesh, &seeds);
                 selection.set_faces_from_iter(linked, additive);
             } else {
                 selection.set_faces_from_iter(hits, additive);
@@ -306,23 +305,23 @@ pub fn apply_click_selection(
     let Ok(ray) = camera.viewport_to_world(cam_gt, cursor) else {
         return;
     };
-    let Ok((mesh, mut selection, transform)) = mesh_q.get_single_mut() else {
+    let Ok((mesh, mut selection, transform)) = mesh_q.single_mut() else {
         return;
     };
 
-    let world_from_local = transform.compute_matrix();
+    let world_from_local = transform.to_matrix();
     let cam_dist = cam_gt.translation().distance(transform.translation);
     let vert_threshold = (DEFAULT_VERTEX_THRESHOLD * cam_dist * 0.15).clamp(0.04, 0.35);
     let edge_threshold = (DEFAULT_EDGE_THRESHOLD * cam_dist * 0.15).clamp(0.03, 0.25);
 
     let hit: Option<PickHit> = match editor.selection_mode {
-        SelectionMode::Vertex => pick_vertex(&ray, mesh, &world_from_local, vert_threshold),
-        SelectionMode::Edge => pick_edge(&ray, mesh, &world_from_local, edge_threshold),
+        SelectionMode::Vertex => pick_vertex(&ray, &mesh, &world_from_local, vert_threshold),
+        SelectionMode::Edge => pick_edge(&ray, &mesh, &world_from_local, edge_threshold),
         SelectionMode::Face | SelectionMode::Cell => {
-            pick_face(&ray, mesh, &world_from_local)
+            pick_face(&ray, &mesh, &world_from_local)
         }
         SelectionMode::Object => {
-            if pick_face(&ray, mesh, &world_from_local).is_some() {
+            if pick_face(&ray, &mesh, &world_from_local).is_some() {
                 selection.select_all_vertices(mesh.vertices.len());
                 return;
             }
@@ -342,7 +341,7 @@ pub fn apply_click_selection(
             let ctrl_held = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
             if alt_held && ctrl_held {
                 // Ctrl+Alt+click: edge ring (Blender-like)
-                let ring = select_edge_ring(mesh, a, b);
+                let ring = select_edge_ring(&mesh, a, b);
                 if additive {
                     for e in ring {
                         selection.select_edge(e.0, e.1);
@@ -355,7 +354,7 @@ pub fn apply_click_selection(
                 }
             } else if alt_held {
                 // Alt+click: select full edge loop (Blender-like)
-                let loop_edges = select_edge_loop(mesh, a, b);
+                let loop_edges = select_edge_loop(&mesh, a, b);
                 if additive {
                     for e in loop_edges {
                         selection.select_edge(e.0, e.1);
@@ -375,7 +374,7 @@ pub fn apply_click_selection(
         Some(PickHit::Face { index, .. }) => {
             if editor.selection_mode == SelectionMode::Cell {
                 // Cell mode: select the entire connected face region
-                let region = polyforge_core::select_linked_faces(mesh, index);
+                let region = polyforge_core::select_linked_faces(&mesh, index);
                 if additive {
                     for f in region {
                         selection.toggle_face(f);
@@ -407,11 +406,11 @@ pub fn draw_selection_system(
     query: Query<(&EditableMesh, &Selection, &Transform), With<ActiveMesh>>,
     editor: Res<EditorState>,
 ) {
-    let Ok((mesh, selection, transform)) = query.get_single() else {
+    let Ok((mesh, selection, transform)) = query.single() else {
         return;
     };
 
-    let world_from_local = transform.compute_matrix();
+    let world_from_local = transform.to_matrix();
     let sel_color = if editor.selection_mode == SelectionMode::Cell {
         Color::srgb(0.2, 0.85, 0.9) // cyan for cells
     } else {
@@ -506,7 +505,7 @@ pub fn draw_selection_system(
 
     if editor.selection_mode == SelectionMode::Edge {
         let dim = Color::srgba(0.5, 0.5, 0.55, 0.4);
-        for (a, b) in extract_edges(mesh) {
+        for (a, b) in extract_edges(&mesh) {
             if !selection.edges.contains(&(a.min(b), a.max(b))) {
                 if let (Some(&va), Some(&vb)) = (
                     mesh.vertices.get(a as usize),
@@ -574,7 +573,7 @@ pub fn proportional_and_circle_hotkeys(
 
 
 pub fn circle_select_system(
-    mut circle: ResMut<CircleSelectState>,
+    circle: ResMut<CircleSelectState>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     camera_q: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
@@ -584,19 +583,19 @@ pub fn circle_select_system(
     if !circle.active {
         return;
     }
-    let Ok(window) = windows.get_single() else { return };
+    let Ok(window) = windows.single() else { return };
     let Some(cursor) = window.cursor_position() else { return };
-    let Ok((camera, cam_gt)) = camera_q.get_single() else { return };
+    let Ok((camera, cam_gt)) = camera_q.single() else { return };
     if !mouse.pressed(MouseButton::Left) {
         return;
     }
     let additive = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    let Ok((mesh, mut selection, transform)) = mesh_q.get_single_mut() else { return };
+    let Ok((mesh, mut selection, transform)) = mesh_q.single_mut() else { return };
     // Paint-select vertices near cursor in screen space
     for (i, v) in mesh.vertices.iter().enumerate() {
         let world = transform.transform_point(*v);
         if let Ok(screen) = camera.world_to_viewport(cam_gt, world) {
-            if screen.distance(cursor) <= circle.radius {
+            if screen.distance(cursor) <= circle.radius_px {
                 if additive {
                     selection.vertices.insert(i as u32);
                 } else {

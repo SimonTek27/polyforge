@@ -27,8 +27,8 @@
 //! assert!(gcode.contains("G28"));
 //! ```
 
-#[cfg(any(feature = "bevy", feature = "mesh"))]
-use bevy::prelude::*;
+#[cfg(feature = "bevy")]
+use bevy::prelude::{App, Plugin, Resource};
 use thiserror::Error;
 
 pub mod gcode;

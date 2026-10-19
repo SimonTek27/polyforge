@@ -4,11 +4,6 @@ use bevy::prelude::*;
 use polyforge_core::{AppMode, WorkspaceState};
 use crate::{VectorPath, VectorWorkspace};
 
-#[derive(Clone, Copy, Debug)]
-enum DragTarget {
-    Point(usize),
-    Bezier { seg: usize, handle: u8 }, // 0=p0 1=p1 2=p2 3=p3
-}
 
 /// Cycle active vector path with `[` / `]` in VectorMode.
 pub fn cycle_active_path_system(

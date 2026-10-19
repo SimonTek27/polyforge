@@ -73,6 +73,20 @@ STL export, Parallel/Coincident, residual solve loop.
 
 ---
 
+## Phase 33 — 3D print module | ✅
+
+| Item | Status |
+|------|--------|
+| `polyforge-print` crate (types, profiles, geometry, slicer, G-code) | ✅ |
+| 9 built-in printer profiles (Prusa, Bambu, Creality, Voron, generic) | ✅ |
+| `mesh_source` bridge: `EditableMesh` → slicer triangles, Y-up → Z-up | ✅ |
+| Bed placement (centre XY, drop to Z=0) + scale in mm/unit | ✅ |
+| Bevy plugin (`PrintState`) + **3D Print** panel (printer, quality, temps, adhesion) | ✅ |
+| Slice → stats → **Export G-code** to `artifacts/` | ✅ |
+| 18 tests (14 unit + 3 integration + 1 doc) | ✅ |
+
+---
+
 ## Backlog that needs external intervention
 
 | Item | Status | Why blocked |

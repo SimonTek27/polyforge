@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use bevy::input::mouse::MouseMotion;
-use polyforge_core::{GizmoState, EditorState, SelectionMode, EditableObject, ActiveMesh};
+use polyforge_core::{GizmoState, GizmoMode, GizmoAxis, EditorState, SelectionMode, EditableObject, ActiveMesh};
 
 /// Drag whole active object when in Object selection mode with gizmo grab.
 pub fn object_mode_transform_system(
@@ -16,11 +16,11 @@ pub fn object_mode_transform_system(
     if editor.selection_mode != SelectionMode::Object {
         return;
     }
-    if !gizmo.dragging {
+    if !gizmo.is_dragging {
         return;
     }
     if !mouse.pressed(MouseButton::Left) {
-        gizmo.dragging = false;
+        gizmo.is_dragging = false;
         return;
     }
 
@@ -32,7 +32,7 @@ pub fn object_mode_transform_system(
         return;
     }
 
-    let Ok(mut tf) = q.get_single_mut() else {
+    let Ok(mut tf) = q.single_mut() else {
         return;
     };
 
@@ -44,7 +44,7 @@ pub fn object_mode_transform_system(
                 GizmoAxis::X => d.x = delta.x * sens,
                 GizmoAxis::Y => d.y = -delta.y * sens,
                 GizmoAxis::Z => d.z = delta.x * sens,
-                GizmoAxis::None | GizmoAxis::View => {
+                GizmoAxis::None | GizmoAxis::View | GizmoAxis::XY | GizmoAxis::XZ | GizmoAxis::YZ => {
                     d.x = delta.x * sens;
                     d.y = -delta.y * sens;
                 }

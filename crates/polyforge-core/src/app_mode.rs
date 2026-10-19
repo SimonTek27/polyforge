@@ -38,6 +38,7 @@ pub struct WorkspaceState {
     pub mode: AppMode,
     pub show_settings: bool,
     pub show_help: bool,
+    pub show_print: bool,
 }
 
 impl Default for WorkspaceState {
@@ -46,6 +47,7 @@ impl Default for WorkspaceState {
             mode: AppMode::Poly,
             show_settings: false,
             show_help: false,
+            show_print: false,
         }
     }
 }

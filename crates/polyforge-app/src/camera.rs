@@ -1,12 +1,14 @@
 //! Orbit camera (Phase 26).
-use bevy::prelude::*;
-use bevy::input::mouse::{MouseMotion, MouseWheel};
-use polyforge_core::{GizmoState, VertexDragState, MarqueeState};
 
+use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy::prelude::*;
+use polyforge_core::{GizmoState, MarqueeState, VertexDragState};
+
+#[derive(Component)]
 pub struct OrbitCamera {
-    distance: f32,
-    yaw: f32,
-    pitch: f32,
+    pub distance: f32,
+    pub yaw: f32,
+    pub pitch: f32,
 }
 
 pub fn orbit_camera_system(
@@ -22,31 +24,36 @@ pub fn orbit_camera_system(
         return;
     }
 
-    let Ok(window) = query.single() else { return; };
-    let window = window.0; // Get the window from the query
+    let Ok((mut transform, mut orbit)) = query.single_mut() else {
+        return;
+    };
 
-    let Ok(window) = query.get_single() else { return; };
-    let window = window.0; // Get the window from the query
+    let rotating =
+        mouse.pressed(MouseButton::Middle) || (mouse.pressed(MouseButton::Right) && !mouse.pressed(MouseButton::Left));
 
-    let Ok(window) = window.single() else { return; };
-    let cursor = window.cursor_position();
-
-    if let Some(cursor) = cursor {
-        let center = window.physical_size().as_vec2() * 0.5;
-        let delta = cursor - center;
-
-        // Yaw (horizontal rotation)
-        let yaw = -delta.x * 0.002;
-        // Pitch (vertical rotation)
-        let pitch = -delta.y * 0.002;
-
-        let mut cam = query.single_mut().0;
-        cam.translation = Vec3::new(0.0, 0.0, 5.0);
-        cam.look_at(Vec3::ZERO, Vec3::Y);
+    let mut delta = Vec2::ZERO;
+    for ev in motion.read() {
+        delta += ev.delta;
     }
 
-    // Handle scroll zoom
-    for scroll_event in scroll.read() {
-        // Zoom logic here
+    if rotating && delta != Vec2::ZERO {
+        orbit.yaw -= delta.x * 0.005;
+        orbit.pitch = (orbit.pitch - delta.y * 0.005).clamp(-1.54, 1.54);
     }
+
+    for ev in scroll.read() {
+        let factor = (-ev.y * 0.1).exp();
+        orbit.distance = (orbit.distance * factor).clamp(0.5, 1000.0);
+    }
+
+    let (sin_yaw, cos_yaw) = orbit.yaw.sin_cos();
+    let (sin_pitch, cos_pitch) = orbit.pitch.sin_cos();
+    let offset = Vec3::new(
+        orbit.distance * cos_pitch * sin_yaw,
+        orbit.distance * sin_pitch,
+        orbit.distance * cos_pitch * cos_yaw,
+    );
+
+    transform.translation = offset;
+    transform.look_at(Vec3::ZERO, Vec3::Y);
 }

@@ -5,10 +5,8 @@ use bevy::prelude::*;
 use bevy::window::WindowPlugin;
 use polyforge_core::{
     PolyForgeCorePlugin, EditableMesh, EditableObject, ActiveMesh, Selection, MeshId,
-    GizmoState, GizmoMode, GizmoAxis, draw_gizmo, EditorState, Tool, SelectionMode,
-    pick_vertex, pick_edge, pick_face, PickHit,
-    DEFAULT_VERTEX_THRESHOLD, DEFAULT_EDGE_THRESHOLD,
-    extract_edges, MarqueeState, MarqueeRect, VertexDragState, History, select_edge_ring, select_similar_faces, CircleSelectState, ProportionalEdit, eval_modifier_stack, LassoState, ModifierStack, MirrorModifier, MirrorAxis, apply_mirror, apply_all_modifiers, ArrayModifier, SolidifyModifier, KnifeToolState, SceneRoot, Collection, InCollection, HiddenByCollection, ObjectName, ObjectParent, ObjectLocal, CommandRegistry, PendingPluginCommand, MacroRegistry, register_builtin_commands, register_builtin_macros, MaterialTable, UvEditorState,
+    eval_modifier_stack, ModifierStack, SceneRoot, Collection, InCollection,
+    ObjectName, PendingPluginCommand, MacroRegistry,
 };
 use polyforge_ops::PolyForgeOpsPlugin;
 use polyforge_uv::PolyForgeUvPlugin;
@@ -16,6 +14,7 @@ use polyforge_io::PolyForgeIoPlugin;
 use polyforge_ui::PolyForgeUiPlugin;
 use polyforge_cad::PolyForgeCadPlugin;
 use polyforge_vector::{PolyForgeVectorPlugin, draw_vector_paths};
+use polyforge_print::PolyForgePrintPlugin;
 
 mod object_mode;
 mod material_gpu;
@@ -27,6 +26,7 @@ mod gizmo_sys;
 mod selection_sys;
 mod scene_ops;
 mod hotkeys;
+mod print_panel;
 
 use object_mode::object_mode_transform_system;
 use material_gpu::sync_materials_to_gpu;
@@ -36,6 +36,7 @@ use scene_io::{scene_hotkeys, auto_save_system, AutoSaveTimer};
 use camera::{OrbitCamera, orbit_camera_system};
 use gizmo_sys::{update_gizmo_origin, gizmo_interaction_system, draw_gizmo_system};
 use hotkeys::hotkey_system;
+use print_panel::{print_panel_system, PrintUiState};
 use scene_ops::{
     cycle_active_object_system, separate_object_system, join_active_objects_system,
     mirror_modifier_system, array_modifier_hotkeys, collection_visibility_system,
@@ -57,7 +58,7 @@ fn main() {
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "PolyForge".into(),
-                    resolution: (1280., 720.).into(),
+                    resolution: (1280u32, 720u32).into(),
                     ..default()
                 }),
                 ..default()
@@ -71,10 +72,16 @@ fn main() {
             PolyForgeUiPlugin,
             PolyForgeCadPlugin,
             PolyForgeVectorPlugin,
+            PolyForgePrintPlugin,
         ))
         .init_resource::<MacroRunner>()
         .init_resource::<AutoSaveTimer>()
+        .init_resource::<PrintUiState>()
         .add_systems(Startup, (setup_scene, setup_plugin_commands))
+        .add_systems(
+            bevy_egui::EguiPrimaryContextPass,
+            print_panel_system,
+        )
         .add_systems(
             Update,
             (
@@ -93,6 +100,11 @@ fn main() {
                 mirror_modifier_system,
                 interactive_knife_system,
                 plugin_command_hotkeys,
+            ),
+        )
+        .add_systems(
+            Update,
+            (
                 array_modifier_hotkeys,
                 collection_visibility_system,
                 parent_transform_system,
@@ -138,13 +150,13 @@ fn setup_scene(
     commands.spawn((
         DirectionalLight {
             illuminance: 10000.0,
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
-    commands.insert_resource(AmbientLight {
+    commands.insert_resource(GlobalAmbientLight {
         color: Color::WHITE,
         brightness: 120.0,
         ..default()
@@ -198,7 +210,7 @@ fn sync_mesh_to_gpu(
     query: Query<(&EditableMesh, &Mesh3d, Option<&ModifierStack>)>,
 ) {
     for (editable, mesh3d, stack) in &query {
-        if let Some(gpu_mesh) = meshes.get_mut(&mesh3d.0) {
+        if let Some(mut gpu_mesh) = meshes.get_mut(&mesh3d.0) {
             let evaluated = if let Some(st) = stack {
                 if st.mirror.is_some() || st.array.is_some() || st.solidify.is_some() {
                     eval_modifier_stack(editable, st)
@@ -213,6 +225,7 @@ fn sync_mesh_to_gpu(
     }
 }
 
+#[derive(Resource, Default)]
 struct MacroRunner {
     queue: Vec<String>,
 }

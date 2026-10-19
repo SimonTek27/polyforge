@@ -112,7 +112,7 @@ pub fn scene_hotkeys(
                 cad_ws.active_body = None;
                 // Restore active mesh (legacy field)
                 if let Some(md) = &project.mesh {
-                    if let Ok(mut mesh) = active_mesh_q.get_single_mut() {
+                    if let Ok(mut mesh) = active_mesh_q.single_mut() {
                         *mesh = md.to_editable();
                     }
                 }
@@ -121,7 +121,7 @@ pub fn scene_hotkeys(
                 for (i, nm) in project.meshes.iter().enumerate() {
                     let editable = nm.mesh.to_editable();
                     if i == 0 {
-                        if let Ok(mut mesh) = active_mesh_q.get_single_mut() {
+                        if let Ok(mut mesh) = active_mesh_q.single_mut() {
                             *mesh = editable.clone();
                         }
                         continue;
@@ -138,7 +138,7 @@ pub fn scene_hotkeys(
                         MeshMaterial3d(mat),
                         Transform::from_translation(Vec3::from_array(nm.translation)),
                         EditableObject,
-                        MeshId(300 + i as u32),
+                        MeshId(300 + i as u64),
                         editable,
                         Selection::default(),
                         Name::new(nm.name.clone()),
@@ -186,6 +186,7 @@ pub fn scene_hotkeys(
                         closed: v.closed,
                         beziers: Vec::new(),
                         filled: false,
+                        holes: Vec::new(),
                     };
                     commands.spawn((path, Name::new(v.name.clone())));
                 }

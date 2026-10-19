@@ -5,9 +5,9 @@
 
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use polyforge_cad::{ActiveKernel, AssemblyMate,
+use polyforge_cad::{
     CadBody, CadWorkspace, feature_params, apply_feature_params,
-    mesh_fillet_approximate, SketchToolState, solve_body_sketches, solve_body_sketches_lsq, estimate_sketch_dof, constraint_residual,
+    mesh_fillet_approximate, solve_body_sketches, solve_body_sketches_lsq, estimate_sketch_dof, constraint_residual,
     add_constraint_to_last_sketch, UserConstraint, UserConstraintKind,
 };
 use polyforge_vector::{VectorPath, VectorWorkspace};
@@ -142,6 +142,9 @@ fn editor_ui_main_panel(
                 if ui.add_sized([72.0, 28.0], egui::Button::new("? Help")).clicked() {
                     workspace.show_help = !workspace.show_help;
                     workspace.show_settings = false;
+                }
+                if ui.add_sized([72.0, 28.0], egui::Button::new("🖨 Print")).clicked() {
+                    workspace.show_print = !workspace.show_print;
                 }
             });
         });
