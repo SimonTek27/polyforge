@@ -398,25 +398,28 @@ pub fn array_modifier_hotkeys(
 
 
 pub fn collection_visibility_system(
-    collections: Query<(Entity, &Collection)>,
+    mut collections: ParamSet<(
+        Query<(Entity, &Collection)>,
+        Query<&mut Collection>,
+        Query<&mut Visibility>,
+    )>,
     members: Query<(Entity, Option<&InCollection>, Option<&ObjectParent>), With<EditableObject>>,
-    mut visibility: Query<&mut Visibility>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut col_q: Query<&mut Collection>,
 ) {
-    // H toggles active collection visibility when Shift held
-    if keys.just_pressed(KeyCode::KeyH)
-        && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
-    {
-        for mut c in &mut col_q {
+    // H toggles all collection visibility when Shift is held.
+    let toggle = keys.just_pressed(KeyCode::KeyH)
+        && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight));
+
+    if toggle {
+        for mut c in &mut collections.p1() {
             c.visible = !c.visible;
             info!("Collection '{}' visible={}", c.name, c.visible);
         }
     }
 
-    // Build map collection entity -> visible
+    // Build map collection entity -> visible.
     let mut vis_map = std::collections::HashMap::new();
-    for (e, c) in &collections {
+    for (e, c) in &collections.p0() {
         vis_map.insert(e, c.visible);
     }
 
@@ -426,7 +429,7 @@ pub fn collection_visibility_system(
         } else {
             true
         };
-        if let Ok(mut vis) = visibility.get_mut(entity) {
+        if let Ok(mut vis) = collections.p2().get_mut(entity) {
             *vis = if show {
                 Visibility::Inherited
             } else {

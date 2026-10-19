@@ -291,7 +291,11 @@ fn editor_ui_windows(
     mut settings: ResMut<AppSettings>,
     mut commands: Commands,
     mut cad_ws: ResMut<CadWorkspace>,
-    mut cad_bodies: Query<(Entity, &mut CadBody, Option<&mut polyforge_core::EditableMesh>)>,
+    mut cad_bodies: Query<(
+        Entity,
+        &mut CadBody,
+        Option<&mut polyforge_core::EditableMesh>,
+    ), Without<ActiveMesh>>,
     mut vector_ws: ResMut<VectorWorkspace>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return; };

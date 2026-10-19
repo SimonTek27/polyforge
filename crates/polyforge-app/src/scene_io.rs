@@ -26,7 +26,10 @@ impl Default for AutoSaveTimer {
 
 fn build_project(
     mesh_q: &Query<&EditableMesh, With<ActiveMesh>>,
-    all_meshes: &Query<(&EditableMesh, &Transform, Option<&ObjectName>), With<EditableObject>>,
+    all_meshes: &Query<
+        (&EditableMesh, &Transform, Option<&ObjectName>),
+        (With<EditableObject>, Without<ActiveMesh>),
+    >,
     cad_q: &Query<(&CadBody, &Transform)>,
     vec_q: &Query<&VectorPath>,
     name: &str,
@@ -68,15 +71,20 @@ fn build_project(
 
 pub fn scene_hotkeys(
     keys: Res<ButtonInput<KeyCode>>,
-    mesh_q: Query<&EditableMesh, With<ActiveMesh>>,
-    all_meshes: Query<(&EditableMesh, &Transform, Option<&ObjectName>), With<EditableObject>>,
+    mut mesh_q: ParamSet<(
+        Query<&EditableMesh, With<ActiveMesh>>,
+        Query<&mut EditableMesh, With<ActiveMesh>>,
+    )>,
+    all_meshes: Query<
+        (&EditableMesh, &Transform, Option<&ObjectName>),
+        (With<EditableObject>, Without<ActiveMesh>),
+    >,
     cad_q: Query<(&CadBody, &Transform)>,
     vec_q: Query<&VectorPath>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut cad_ws: ResMut<CadWorkspace>,
-    mut active_mesh_q: Query<&mut EditableMesh, With<ActiveMesh>>,
     existing_cad: Query<Entity, With<CadBody>>,
     existing_vec: Query<Entity, With<VectorPath>>,
     existing_poly: Query<Entity, (With<EditableObject>, Without<CadBody>, Without<ActiveMesh>)>,
@@ -86,7 +94,7 @@ pub fn scene_hotkeys(
 
     if keys.just_pressed(KeyCode::KeyS) && ctrl && shift {
         let path = std::path::Path::new("/home/workdir/artifacts/polyforge_scene.json");
-        let project = build_project(&mesh_q, &all_meshes, &cad_q, &vec_q, "PolyForge Scene");
+        let project = build_project(&mesh_q.p0(), &all_meshes, &cad_q, &vec_q, "PolyForge Scene");
         match save_scene_project(&project, path) {
             Ok(()) => info!("Scene saved → {}", path.display()),
             Err(e) => warn!("Scene save failed: {e}"),
@@ -112,7 +120,7 @@ pub fn scene_hotkeys(
                 cad_ws.active_body = None;
                 // Restore active mesh (legacy field)
                 if let Some(md) = &project.mesh {
-                    if let Ok(mut mesh) = active_mesh_q.single_mut() {
+                    if let Ok(mut mesh) = mesh_q.p1().single_mut() {
                         *mesh = md.to_editable();
                     }
                 }
@@ -121,7 +129,7 @@ pub fn scene_hotkeys(
                 for (i, nm) in project.meshes.iter().enumerate() {
                     let editable = nm.mesh.to_editable();
                     if i == 0 {
-                        if let Ok(mut mesh) = active_mesh_q.single_mut() {
+                        if let Ok(mut mesh) = mesh_q.p1().single_mut() {
                             *mesh = editable.clone();
                         }
                         continue;
@@ -207,7 +215,10 @@ pub fn auto_save_system(
     settings: Res<AppSettings>,
     mut timer: ResMut<AutoSaveTimer>,
     mesh_q: Query<&EditableMesh, With<ActiveMesh>>,
-    all_meshes: Query<(&EditableMesh, &Transform, Option<&ObjectName>), With<EditableObject>>,
+    all_meshes: Query<
+        (&EditableMesh, &Transform, Option<&ObjectName>),
+        (With<EditableObject>, Without<ActiveMesh>),
+    >,
     cad_q: Query<(&CadBody, &Transform)>,
     vec_q: Query<&VectorPath>,
 ) {

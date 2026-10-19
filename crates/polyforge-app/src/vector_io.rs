@@ -6,8 +6,7 @@ use polyforge_vector::{VectorPath, VectorWorkspace, write_svg_file, read_svg_fil
 pub fn vector_io_system(
     keys: Res<ButtonInput<KeyCode>>,
     workspace: Res<WorkspaceState>,
-    paths: Query<&VectorPath>,
-    mut paths_mut: Query<&mut VectorPath>,
+    mut paths: ParamSet<(Query<&VectorPath>, Query<&mut VectorPath>)>,
     path_entities: Query<Entity, With<VectorPath>>,
     mut vws: ResMut<VectorWorkspace>,
     mut commands: Commands,
@@ -19,7 +18,7 @@ pub fn vector_io_system(
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     // Ctrl+Shift+E export SVG
     if keys.just_pressed(KeyCode::KeyE) && ctrl && shift {
-        let list: Vec<VectorPath> = paths.iter().cloned().collect();
+        let list: Vec<VectorPath> = paths.p0().iter().cloned().collect();
         let path = std::path::Path::new("/home/workdir/artifacts/polyforge_vectors.svg");
         match write_svg_file(&list, path) {
             Ok(()) => info!("Exported SVG {} paths → {}", list.len(), path.display()),
@@ -42,7 +41,7 @@ pub fn vector_io_system(
     }
     // Boolean 2D on first two paths
     if ctrl && shift {
-        let list: Vec<VectorPath> = paths.iter().cloned().collect();
+        let list: Vec<VectorPath> = paths.p0().iter().cloned().collect();
         // Clear all vector paths
         if keys.just_pressed(KeyCode::KeyX) {
             for e in path_entities.iter() {
@@ -104,7 +103,7 @@ pub fn vector_io_system(
         // G1 on active path
         if keys.just_pressed(KeyCode::KeyG) {
             if let Some(e) = vws.active_path {
-                if let Ok(mut path) = paths_mut.get_mut(e) {
+                if let Ok(mut path) = paths.p1().get_mut(e) {
                     let n = path_enforce_g1(&mut path.beziers, true);
                     info!("G1 enforced on {n} joints");
                 }
@@ -113,7 +112,7 @@ pub fn vector_io_system(
         // Smooth polyline on active
         if keys.just_pressed(KeyCode::KeyM) {
             if let Some(e) = vws.active_path {
-                if let Ok(mut path) = paths_mut.get_mut(e) {
+                if let Ok(mut path) = paths.p1().get_mut(e) {
                     if path.points.len() >= 3 {
                         path.points = smooth_polyline(&path.points, path.closed);
                         info!("Polyline smoothed");
