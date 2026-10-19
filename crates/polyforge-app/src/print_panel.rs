@@ -14,6 +14,8 @@ pub struct PrintUiState {
     pub mm_per_unit: f32,
     pub status: String,
     pub error: bool,
+    pub preview_enabled: bool,
+    pub preview_layer: usize,
 }
 
 impl Default for PrintUiState {
@@ -22,6 +24,8 @@ impl Default for PrintUiState {
             mm_per_unit: 100.0,
             status: String::new(),
             error: false,
+            preview_enabled: false,
+            preview_layer: 0,
         }
     }
 }
@@ -55,6 +59,86 @@ fn output_path(settings: &polyforge_print::SliceSettings) -> std::path::PathBuf 
         .unwrap_or_else(|_| std::path::PathBuf::from("."))
         .join("artifacts")
         .join(name)
+}
+
+fn preview_point(
+    p: polyforge_print::Vec2,
+    z: f64,
+    scale: f64,
+    center: polyforge_print::Vec2,
+) -> Vec3 {
+    Vec3::new(
+        ((p.x - center.x) / scale) as f32,
+        (z / scale) as f32,
+        -((p.y - center.y) / scale) as f32,
+    )
+}
+
+fn draw_polygon(
+    gizmos: &mut Gizmos,
+    poly: &polyforge_print::Polygon2D,
+    z: f64,
+    scale: f64,
+    center: polyforge_print::Vec2,
+    color: Color,
+) {
+    let verts = &poly.vertices;
+    if verts.len() < 2 {
+        return;
+    }
+    for i in 0..verts.len() {
+        let a = preview_point(verts[i], z, scale, center);
+        let b = preview_point(verts[(i + 1) % verts.len()], z, scale, center);
+        gizmos.line(a, b, color);
+    }
+}
+
+/// Draw the currently selected sliced layer over the viewport.
+///
+/// Slice coordinates are Z-up millimetres centred on the build plate; the
+/// scene is Y-up in units, so the preview is mapped back to the origin.
+pub fn print_preview_system(
+    print: Res<PrintState>,
+    ui_state: Res<PrintUiState>,
+    mut gizmos: Gizmos,
+) {
+    if !ui_state.preview_enabled {
+        return;
+    }
+    let Some(slice) = print.last_slice.as_ref() else {
+        return;
+    };
+    let Some(printer) = print.registry.active() else {
+        return;
+    };
+    let Some(layer) = slice.layers.get(ui_state.preview_layer) else {
+        return;
+    };
+
+    let scale = (ui_state.mm_per_unit as f64).max(1e-3);
+    let center = polyforge_print::Vec2::new(
+        printer.build_volume_x * 0.5,
+        printer.build_volume_y * 0.5,
+    );
+    let z = layer.z + layer.thickness * 0.5;
+
+    let brim_color = Color::srgb(0.25, 0.95, 0.45);
+    let perimeter_color = Color::srgb(1.0, 0.55, 0.15);
+    let infill_color = Color::srgb(0.30, 0.70, 1.0);
+    let support_color = Color::srgb(0.65, 0.65, 0.70);
+
+    for poly in &layer.brim {
+        draw_polygon(&mut gizmos, poly, z, scale, center, brim_color);
+    }
+    for poly in &layer.perimeters {
+        draw_polygon(&mut gizmos, poly, z, scale, center, perimeter_color);
+    }
+    for poly in &layer.infill {
+        draw_polygon(&mut gizmos, poly, z, scale, center, infill_color);
+    }
+    for poly in &layer.support {
+        draw_polygon(&mut gizmos, poly, z, scale, center, support_color);
+    }
 }
 
 pub fn print_panel_system(
@@ -295,6 +379,24 @@ pub fn print_panel_system(
                     "Bounds: {:.1} × {:.1} × {:.1} mm",
                     size.x, size.y, size.z
                 ));
+                ui.checkbox(&mut ui_state.preview_enabled, "Preview selected layer");
+                if ui_state.preview_enabled {
+                    let max_layer = slice.total_layers.saturating_sub(1);
+                    ui_state.preview_layer = ui_state.preview_layer.min(max_layer);
+                    ui.add(
+                        egui::Slider::new(&mut ui_state.preview_layer, 0..=max_layer)
+                            .text("Layer"),
+                    );
+                    if let Some(layer) = slice.layers.get(ui_state.preview_layer) {
+                        ui.small(format!(
+                            "z = {:.2} mm · {} perimeters · {} infill · {} support",
+                            layer.z,
+                            layer.perimeters.len(),
+                            layer.infill.len(),
+                            layer.support.len()
+                        ));
+                    }
+                }
                 for w in &slice.warnings {
                     ui.colored_label(egui::Color32::YELLOW, w);
                 }

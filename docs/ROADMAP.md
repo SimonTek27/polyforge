@@ -95,6 +95,7 @@ STL export, Parallel/Coincident, residual solve loop.
 | Support controls in the 3D Print panel (enable + overhang angle) | ✅ |
 | Support time/filament accounted in estimates | ✅ |
 | 21 tests (17 unit + 4 integration + 1 doc) | ✅ |
+| Viewport layer preview (perimeters / infill / support / brim gizmos) | ✅ |
 
 ---
 
@@ -119,4 +120,4 @@ STL export, Parallel/Coincident, residual solve loop.
 
 ---
 
-*Last updated: Phase 32 — 2026-10-18 — remaining work is OCCT (deferred) or external (git credentials / future Bevy)*
+*Last updated: Phase 33b — 2026-10-19 — slicer supports, solid shells and layer preview; remaining work is OCCT (deferred) or external (future Bevy)*
