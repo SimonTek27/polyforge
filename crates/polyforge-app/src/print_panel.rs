@@ -5,7 +5,7 @@ use bevy_egui::{egui, EguiContexts};
 use polyforge_core::{ActiveMesh, EditableMesh, WorkspaceState};
 use polyforge_print::{
     generate_gcode, mesh_to_bed_triangles, BedAdhesionType, InfillPattern, PrintState,
-    QualityProfile, SlicerEngine,
+    QualityProfile, SlicerEngine, SupportType,
 };
 
 #[derive(Resource)]
@@ -206,6 +206,31 @@ pub fn print_panel_system(
                         ui.selectable_value(&mut print.settings.adhesion_type, a, format!("{a:?}"));
                     }
                 });
+
+            ui.separator();
+
+            // ── Supports ──
+            ui.label("Supports");
+            ui.horizontal(|ui| {
+                if ui
+                    .checkbox(&mut print.settings.generate_support, "Generate")
+                    .changed()
+                {
+                    print.settings.support_type = if print.settings.generate_support {
+                        SupportType::Normal
+                    } else {
+                        SupportType::None
+                    };
+                }
+                ui.add_enabled(
+                    print.settings.generate_support,
+                    egui::DragValue::new(&mut print.settings.support_angle)
+                        .range(5.0..=89.0)
+                        .suffix(" °")
+                        .speed(0.5),
+                );
+                ui.label("overhang");
+            });
 
             ui.separator();
 

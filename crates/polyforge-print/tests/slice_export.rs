@@ -75,3 +75,38 @@ fn all_builtin_profiles_are_valid() {
         );
     }
 }
+
+#[test]
+fn support_gcode_is_emitted() {
+    use polyforge_print::SupportType;
+
+    let printer = PrinterProfile::create_builtin("generic_marlin").expect("builtin printer");
+    let mut settings = printer.default_settings.clone();
+    settings.generate_support = true;
+    settings.support_type = SupportType::Normal;
+
+    // T-shape: 4 mm pillar (z 0..4) with a 20 mm plate on top (z 4..24).
+    let mut tris = cube(4.0);
+    for t in &mut tris {
+        for v in &mut t.v {
+            v.z += 2.0;
+        }
+        t.normal = (t.v[1] - t.v[0]).cross(t.v[2] - t.v[0]).normalize_or_zero();
+    }
+    let plate = cube(20.0);
+    for t in plate {
+        let mut t = t;
+        for v in &mut t.v {
+            v.z += 14.0;
+        }
+        t.normal = (t.v[1] - t.v[0]).cross(t.v[2] - t.v[0]).normalize_or_zero();
+        tris.push(t);
+    }
+
+    let slice = SlicerEngine::new().slice(&tris, &settings, &printer);
+    assert!(slice.success, "errors: {:?}", slice.errors);
+    assert!(slice.layers.iter().any(|l| !l.support.is_empty()));
+
+    let gcode = generate_gcode(&slice, &printer, &settings);
+    assert!(gcode.contains("--- Support ---"));
+}

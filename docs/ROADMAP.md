@@ -85,6 +85,17 @@ STL export, Parallel/Coincident, residual solve loop.
 | Slice → stats → **Export G-code** to `artifacts/` | ✅ |
 | 18 tests (14 unit + 3 integration + 1 doc) | ✅ |
 
+### Phase 33b — Slicer depth | ✅
+
+| Item | Status |
+|------|--------|
+| Overhang support generation (raster occupancy + angle reach, propagated to bed) | ✅ |
+| Support moves emitted as `--- Support ---` at `support_speed` | ✅ |
+| Multi-layer top/bottom solid shells (`top_solid_layers` / `bottom_solid_layers`) | ✅ |
+| Support controls in the 3D Print panel (enable + overhang angle) | ✅ |
+| Support time/filament accounted in estimates | ✅ |
+| 21 tests (17 unit + 4 integration + 1 doc) | ✅ |
+
 ---
 
 ## Backlog that needs external intervention

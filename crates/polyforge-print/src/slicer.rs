@@ -2,13 +2,13 @@
 //!
 //! Port of ksengine's `SlicerEngine` to Rust. The pipeline is:
 //! bounds -> build-volume check -> layer heights -> mesh/plane intersection
-//! -> perimeters -> infill -> bed adhesion -> per-layer statistics.
+//! -> supports -> perimeters -> infill -> bed adhesion -> per-layer statistics.
 
 use crate::geometry;
 use crate::profile::PrinterProfile;
 use crate::types::{
     BedAdhesionType, BoundingBox, InfillPattern, LayerInfo, LayerSlice, MeshTriangles, Polygon2D,
-    Polygons2D, SliceInfo, SliceSettings, Triangle, Vec2, Vec3,
+    Polygons2D, SliceInfo, SliceSettings, SupportType, Triangle, Vec2, Vec3,
 };
 
 /// Stateless slicer; settings and printer are passed per call.
@@ -45,16 +45,36 @@ impl SlicerEngine {
             return SliceInfo::failed("model produced no layers (height below first layer)");
         }
 
-        let mut layers: Vec<LayerSlice> = Vec::with_capacity(layer_heights.len());
         let total = layer_heights.len();
+        let cross_sections: Vec<Polygons2D> = layer_heights
+            .iter()
+            .map(|&z| self.intersect_mesh_at_z(triangles, z))
+            .collect();
 
+        let supports = if settings.generate_support
+            && settings.support_type != SupportType::None
+        {
+            self.generate_supports(&cross_sections, &bounds, settings)
+        } else {
+            vec![Vec::new(); total]
+        };
+
+        let mut layers: Vec<LayerSlice> = Vec::with_capacity(total);
         for (i, &z) in layer_heights.iter().enumerate() {
             let thickness = if i == 0 {
                 settings.initial_layer_height
             } else {
                 settings.layer_height
             };
-            layers.push(self.process_layer(triangles, z, thickness, settings, i, total));
+            layers.push(self.process_layer(
+                &cross_sections[i],
+                &supports[i],
+                z,
+                thickness,
+                settings,
+                i,
+                total,
+            ));
         }
 
         // Aggregate statistics.
@@ -299,7 +319,8 @@ impl SlicerEngine {
 
     fn process_layer(
         &self,
-        triangles: &MeshTriangles,
+        cross_section: &Polygons2D,
+        support: &Polygons2D,
         z: f64,
         thickness: f64,
         settings: &SliceSettings,
@@ -315,28 +336,34 @@ impl SlicerEngine {
             ..Default::default()
         };
 
-        let cross_section = self.intersect_mesh_at_z(triangles, z);
-        if cross_section.is_empty() {
+        if cross_section.is_empty() && support.is_empty() {
             return layer;
         }
 
-        layer.perimeters = self.generate_perimeters(&cross_section, settings);
+        layer.perimeters = self.generate_perimeters(cross_section, settings);
 
-        let solid = layer.is_first_layer || layer.is_last_layer;
-        if solid {
-            let solid_layers = if layer.is_first_layer {
-                settings.bottom_solid_layers
-            } else {
-                settings.top_solid_layers
-            };
-            if solid_layers > 0 {
+        if !cross_section.is_empty() {
+            let bottom = settings.bottom_solid_layers as usize;
+            let top = settings.top_solid_layers as usize;
+            let is_bottom = layer_index < bottom;
+            let is_top = layer_index + top >= total_layers;
+            if is_bottom || is_top {
                 let mut solid_settings = settings.clone();
                 solid_settings.infill_pattern = InfillPattern::Lines;
+                layer.infill = self.generate_infill(
+                    &layer.perimeters,
+                    &solid_settings,
+                    layer_index,
+                    true,
+                );
+            } else {
                 layer.infill =
-                    self.generate_infill(&layer.perimeters, &solid_settings, layer_index, true);
+                    self.generate_infill(&layer.perimeters, settings, layer_index, false);
             }
-        } else {
-            layer.infill = self.generate_infill(&layer.perimeters, settings, layer_index, false);
+        }
+
+        if !support.is_empty() {
+            layer.support = support.clone();
         }
 
         if layer.is_first_layer {
@@ -345,6 +372,87 @@ impl SlicerEngine {
 
         self.estimate_layer(&mut layer, settings);
         layer
+    }
+
+    /// Overhang-driven support columns, one polygon set per layer.
+    ///
+    /// A cell is unsupported when the layer below has no material within the
+    /// horizontal reach implied by `support_angle`. Unsupported cells are then
+    /// propagated downward so every overhang is carried to the bed.
+    pub fn generate_supports(
+        &self,
+        cross_sections: &[Polygons2D],
+        bounds: &BoundingBox,
+        settings: &SliceSettings,
+    ) -> Vec<Polygons2D> {
+        let n = cross_sections.len();
+        if n == 0 || !bounds.is_valid() {
+            return Vec::new();
+        }
+
+        let line_width = if settings.line_width > 0.0 {
+            settings.line_width
+        } else {
+            settings.nozzle_diameter
+        };
+        let size = bounds.size();
+        let cell = (line_width * 2.0)
+            .max(size.x.max(size.y) / 256.0)
+            .max(0.8);
+
+        let min_x = bounds.min.x;
+        let min_y = bounds.min.y;
+        let cols = (((size.x) / cell).ceil() as usize + 1).max(1);
+        let rows = (((size.y) / cell).ceil() as usize + 1).max(1);
+
+        // Rasterise every cross-section into a boolean occupancy grid.
+        let occupancy: Vec<Vec<bool>> = cross_sections
+            .iter()
+            .map(|polys| {
+                let mut grid = vec![false; cols * rows];
+                if polys.is_empty() {
+                    return grid;
+                }
+                for r in 0..rows {
+                    for c in 0..cols {
+                        let p = Vec2::new(
+                            min_x + (c as f64 + 0.5) * cell,
+                            min_y + (r as f64 + 0.5) * cell,
+                        );
+                        grid[r * cols + c] = polys
+                            .iter()
+                            .any(|poly| geometry::point_in_polygon(p, &poly.vertices));
+                    }
+                }
+                grid
+            })
+            .collect();
+
+        let angle = settings.support_angle.clamp(5.0, 89.0).to_radians();
+        let reach = (settings.layer_height / angle.tan()).max(cell);
+        let radius = (reach / cell).ceil() as isize;
+
+        let mut support: Vec<Vec<bool>> = vec![vec![false; cols * rows]; n];
+        for i in (0..n).rev() {
+            let mut layer = vec![false; cols * rows];
+            for idx in 0..cols * rows {
+                if occupancy[i][idx] {
+                    continue;
+                }
+                let needed_above = if i + 1 < n { support[i + 1][idx] } else { false };
+                let unsupported = i > 0
+                    && !dilated_at(&occupancy[i - 1], idx, cols, rows, radius);
+                if needed_above || unsupported {
+                    layer[idx] = true;
+                }
+            }
+            support[i] = layer;
+        }
+
+        support
+            .iter()
+            .map(|grid| grid_to_polygons(grid, cols, rows, min_x, min_y, cell))
+            .collect()
     }
 
     fn estimate_layer(&self, layer: &mut LayerSlice, settings: &SliceSettings) {
@@ -358,6 +466,11 @@ impl SlicerEngine {
             .iter()
             .map(|p| path_length(&p.vertices, false))
             .sum();
+        let support_length: f64 = layer
+            .support
+            .iter()
+            .map(|p| path_length(&p.vertices, true))
+            .sum();
 
         let print_speed = if layer.is_first_layer {
             settings.initial_layer_speed
@@ -366,6 +479,11 @@ impl SlicerEngine {
         };
         let infill_speed = if settings.infill_speed > 0.0 {
             settings.infill_speed
+        } else {
+            print_speed
+        };
+        let support_speed = if settings.support_speed > 0.0 {
+            settings.support_speed
         } else {
             print_speed
         };
@@ -396,17 +514,82 @@ impl SlicerEngine {
         if infill_speed > 0.0 {
             print_time += infill_length / infill_speed;
         }
-        let travel_estimate = (perimeter_length + infill_length) * 0.1;
+        if support_speed > 0.0 {
+            print_time += support_length / support_speed;
+        }
+        let travel_estimate = (perimeter_length + infill_length + support_length) * 0.1;
         if travel_speed > 0.0 {
             print_time += travel_estimate / travel_speed;
         }
 
         layer.print_time_estimate = print_time;
         if filament_cross_section > 0.0 {
-            layer.filament_used =
-                (perimeter_length + infill_length) * filament_area / filament_cross_section;
+            layer.filament_used = (perimeter_length + infill_length + support_length)
+                * filament_area
+                / filament_cross_section;
         }
     }
+}
+
+/// Is any occupied cell within `radius` cells of `idx`?
+fn dilated_at(grid: &[bool], idx: usize, cols: usize, rows: usize, radius: isize) -> bool {
+    if radius < 0 {
+        return false;
+    }
+    let c0 = (idx % cols) as isize;
+    let r0 = (idx / cols) as isize;
+    for dr in -radius..=radius {
+        let r = r0 + dr;
+        if r < 0 || r >= rows as isize {
+            continue;
+        }
+        for dc in -radius..=radius {
+            let c = c0 + dc;
+            if c < 0 || c >= cols as isize {
+                continue;
+            }
+            if grid[r as usize * cols + c as usize] {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Merge horizontal runs of occupied cells into rectangles.
+fn grid_to_polygons(
+    grid: &[bool],
+    cols: usize,
+    rows: usize,
+    min_x: f64,
+    min_y: f64,
+    cell: f64,
+) -> Polygons2D {
+    let mut polys = Vec::new();
+    for r in 0..rows {
+        let mut c = 0;
+        while c < cols {
+            if !grid[r * cols + c] {
+                c += 1;
+                continue;
+            }
+            let start = c;
+            while c < cols && grid[r * cols + c] {
+                c += 1;
+            }
+            let x0 = min_x + start as f64 * cell;
+            let x1 = min_x + c as f64 * cell;
+            let y0 = min_y + r as f64 * cell;
+            let y1 = y0 + cell;
+            polys.push(Polygon2D::new(vec![
+                Vec2::new(x0, y0),
+                Vec2::new(x1, y0),
+                Vec2::new(x1, y1),
+                Vec2::new(x0, y1),
+            ]));
+        }
+    }
+    polys
 }
 
 fn path_length(verts: &[Vec2], closed: bool) -> f64 {
@@ -634,5 +817,106 @@ mod tests {
         let printer = PrinterProfile::create_builtin("prusa_mini").unwrap();
         let info = engine.slice(&tris, &SliceSettings::default(), &printer);
         assert!(!info.success);
+    }
+
+    /// An upside-down T: a wide plate floating above a thin pillar.
+    fn overhang_mesh() -> MeshTriangles {
+        let mut tris = Vec::new();
+        // Pillar 4 x 4 x 10 (z 0..10).
+        let (px, py, pz) = (2.0, 2.0, 10.0);
+        let v = [
+            Vec3::new(-px, -py, 0.0),
+            Vec3::new(px, -py, 0.0),
+            Vec3::new(px, py, 0.0),
+            Vec3::new(-px, py, 0.0),
+            Vec3::new(-px, -py, pz),
+            Vec3::new(px, -py, pz),
+            Vec3::new(px, py, pz),
+            Vec3::new(-px, py, pz),
+        ];
+        for f in [
+            [0, 1, 2, 3],
+            [5, 4, 7, 6],
+            [4, 0, 3, 7],
+            [1, 5, 6, 2],
+            [3, 2, 6, 7],
+            [4, 5, 1, 0],
+        ] {
+            tris.push(Triangle::new(v[f[0]], v[f[1]], v[f[2]]));
+            tris.push(Triangle::new(v[f[0]], v[f[2]], v[f[3]]));
+        }
+        // Plate 20 x 20 x 2 (z 10..12) wider than the pillar.
+        let (qx, qy) = (10.0, 10.0);
+        let w = [
+            Vec3::new(-qx, -qy, pz),
+            Vec3::new(qx, -qy, pz),
+            Vec3::new(qx, qy, pz),
+            Vec3::new(-qx, qy, pz),
+            Vec3::new(-qx, -qy, pz + 2.0),
+            Vec3::new(qx, -qy, pz + 2.0),
+            Vec3::new(qx, qy, pz + 2.0),
+            Vec3::new(-qx, qy, pz + 2.0),
+        ];
+        for f in [
+            [0, 1, 2, 3],
+            [5, 4, 7, 6],
+            [4, 0, 3, 7],
+            [1, 5, 6, 2],
+            [3, 2, 6, 7],
+            [4, 5, 1, 0],
+        ] {
+            tris.push(Triangle::new(w[f[0]], w[f[1]], w[f[2]]));
+            tris.push(Triangle::new(w[f[0]], w[f[2]], w[f[3]]));
+        }
+        tris
+    }
+
+    #[test]
+    fn supports_are_generated_under_overhangs() {
+        let engine = SlicerEngine::new();
+        let printer = PrinterProfile::create_builtin("generic_marlin").unwrap();
+        let mut settings = SliceSettings::default();
+        settings.generate_support = true;
+        settings.support_type = SupportType::Normal;
+
+        let tris = overhang_mesh();
+        let info = engine.slice(&tris, &settings, &printer);
+        assert!(info.success, "errors: {:?}", info.errors);
+
+        let support_layers = info
+            .layers
+            .iter()
+            .filter(|l| !l.support.is_empty())
+            .count();
+        assert!(support_layers > 10, "support layers: {support_layers}");
+
+        // No supports when disabled.
+        settings.generate_support = false;
+        settings.support_type = SupportType::None;
+        let plain = engine.slice(&tris, &settings, &printer);
+        assert!(plain.layers.iter().all(|l| l.support.is_empty()));
+    }
+
+    #[test]
+    fn solid_shells_follow_layer_counts() {
+        let engine = SlicerEngine::new();
+        let printer = PrinterProfile::create_builtin("generic_marlin").unwrap();
+        let mut settings = SliceSettings::default();
+        settings.infill_density = 0.1;
+        settings.bottom_solid_layers = 3;
+        settings.top_solid_layers = 5;
+
+        let info = engine.slice(&cube(20.0), &settings, &printer);
+        assert!(info.success);
+        let n = info.layers.len();
+        // Solid layers are denser than sparse infill.
+        let count_lines = |l: &LayerSlice| l.infill.len();
+        let bottom: usize = (0..3).map(|i| count_lines(&info.layers[i])).sum();
+        let top: usize = (n - 5..n).map(|i| count_lines(&info.layers[i])).sum();
+        let middle: usize = (5..n / 2)
+            .map(|i| count_lines(&info.layers[i]))
+            .sum();
+        assert!(bottom > middle, "bottom {bottom} vs middle {middle}");
+        assert!(top > middle, "top {top} vs middle {middle}");
     }
 }
