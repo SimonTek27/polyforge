@@ -9,6 +9,7 @@ members = [
     "crates/polyforge-cad",
     "crates/polyforge-vector",
     "crates/polyforge-app",
+    "crates/polyforge-bridge",
 ]
 default-members = ["crates/polyforge-app"]
 
@@ -25,21 +26,9 @@ categories = ["graphics", "game-development", "multimedia"]
 
 [workspace.dependencies]
 bevy = { version = "0.20", default-features = false, features = [
-    "3d",
-    "bevy_asset",
-    "bevy_scene",
-    "bevy_render",
-    "bevy_core_pipeline",
-    "bevy_pbr",
-    "bevy_gltf",
-    "bevy_ui",
-    "bevy_text",
-    "bevy_winit",
-    "bevy_gizmos",
-    "multi_threaded",
-    "x11",
-    "wayland",
-    "default_font",
+    "3d", "bevy_asset", "bevy_scene", "bevy_render", "bevy_core_pipeline",
+    "bevy_pbr", "bevy_gltf", "bevy_ui", "bevy_text", "bevy_winit", "bevy_gizmos",
+    "multi_threaded", "x11", "wayland", "default_font",
 ] }
 bevy_egui = "0.43"
 glam = "0.29"
@@ -56,6 +45,7 @@ polyforge-io = { path = "crates/polyforge-io" }
 polyforge-ui = { path = "crates/polyforge-ui" }
 polyforge-cad = { path = "crates/polyforge-cad" }
 polyforge-vector = { path = "crates/polyforge-vector" }
+polyforge-bridge = { path = "crates/polyforge-bridge" }
 
 [profile.dev]
 opt-level = 1
