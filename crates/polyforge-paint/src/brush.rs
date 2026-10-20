@@ -158,3 +158,48 @@ pub fn fill_all(image: &mut RasterImage, color: crate::types::Rgba, opacity: f32
         image.set_index(i, RasterImage::blend(dst, color, opacity, blend));
     }
 }
+
+/// Stroke session that writes greyscale mask values instead of colours.
+///
+/// The brush paints `brush.color` luminance (white reveals, black hides) and
+/// the eraser paints black; both respect opacity, flow, hardness and spacing.
+pub struct MaskSession {
+    brush: BrushSettings,
+}
+
+impl MaskSession {
+    pub fn new(brush: &BrushSettings, tool: PaintTool) -> Self {
+        let value = if tool == PaintTool::Eraser {
+            0
+        } else {
+            let [r, g, b] = brush.color.to_rgb_f32();
+            let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            (luma.clamp(0.0, 1.0) * 255.0).round() as u8
+        };
+        let mut brush = brush.clone();
+        brush.color = crate::types::Rgba::grey(value);
+        Self { brush }
+    }
+
+    /// Value the brush writes (0..=255).
+    pub fn value(&self) -> u8 {
+        self.brush.color.r
+    }
+
+    pub fn dab(&mut self, mask: &mut RasterImage, cx: f32, cy: f32) {
+        let mut session =
+            StrokeSession::new(mask, &self.brush, PaintTool::Brush, BlendMode::Normal, None);
+        session.dab(mask, cx, cy);
+    }
+
+    pub fn stroke_to(
+        &mut self,
+        mask: &mut RasterImage,
+        from: (f32, f32),
+        to: (f32, f32),
+    ) -> (f32, f32) {
+        let mut session =
+            StrokeSession::new(mask, &self.brush, PaintTool::Brush, BlendMode::Normal, None);
+        session.stroke_to(mask, from, to)
+    }
+}

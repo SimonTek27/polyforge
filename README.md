@@ -37,6 +37,8 @@ This is the initial working scaffold. It already includes:
 - Primitives: cube, plane, cylinder, UV sphere
 - Bevy 3D viewport with orbit camera and a default cube
 - **i18n** with English locale (extensible catalogs)
+- **Paint mode**: PBR channels (base / roughness / metalness / normal / emissive), layer stack (duplicate, rename, opacity, blend mode, per-layer greyscale masks), flood-fill tool with tolerance, X/Y symmetry, `Alt`+click colour picker, undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`), ORM + PNG + textured glTF export, UV-mapped viewport painting
+- **CAD mode**: parametric feature stack with mesh kernel; optional OCCT B-rep kernel behind `cad_kernel` (Pad/Pocket/Fillet, STEP I/O, kernel + quality controls) — see `docs/BUILD_OCCT.md`
 - GPL-3.0 license
 
 ### Controls
@@ -79,6 +81,9 @@ This is the initial working scaffold. It already includes:
 | Select similar      | `Shift+G`                      |
 | Toggle UV seam      | `Ctrl+E`                       |
 | Save / Load project | `Ctrl+S` / `Ctrl+O`            |
+| Paint: undo / redo  | `Ctrl+Z` / `Ctrl+Shift+Z`      |
+| Paint: pick colour  | `Alt` + click (Paint mode)     |
+| Paint: flood fill   | Fill tool + click              |
 | Add plane           | `Shift+A`                      |
 | Add torus           | `Shift+T`                      |
 | Circle select       | `C` then paint LMB             |
@@ -125,6 +130,10 @@ cargo run --release
 ```
 
 The binary is named `polyforge`.
+
+Optional: the real B-rep CAD kernel (OpenCASCADE) is behind the `cad_kernel`
+feature. See [`docs/BUILD_OCCT.md`](docs/BUILD_OCCT.md) and verify your install
+with `pwsh -File scripts/check_occt.ps1`; without it the mesh CAD backend is used.
 
 ## Bevy updates (priority #1)
 

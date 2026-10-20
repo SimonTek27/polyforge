@@ -227,13 +227,17 @@ impl BrushSettings {
 }
 
 /// A single raster layer in the document.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PaintLayer {
     pub name: String,
     pub visible: bool,
     pub opacity: f32,
     pub blend: BlendMode,
     pub pixels: RasterImage,
+    /// Optional greyscale mask (white = visible, black = hidden).
+    pub mask: Option<RasterImage>,
+    /// Whether `mask` is applied when compositing.
+    pub mask_enabled: bool,
 }
 
 impl PaintLayer {
@@ -244,12 +248,48 @@ impl PaintLayer {
             opacity: 1.0,
             blend: BlendMode::Normal,
             pixels: RasterImage::new(width, height),
+            mask: None,
+            mask_enabled: true,
+        }
+    }
+
+    pub fn has_mask(&self) -> bool {
+        self.mask.is_some()
+    }
+
+    /// Create the mask on first use; existing masks are kept.
+    pub fn ensure_mask(&mut self, width: u32, height: u32) -> &mut RasterImage {
+        self.mask
+            .get_or_insert_with(|| RasterImage::filled(width, height, Rgba::WHITE))
+    }
+
+    /// Drop the mask entirely (layer returns to unmasked).
+    pub fn clear_mask(&mut self) {
+        self.mask = None;
+    }
+
+    /// Fill an existing mask with one value (255 = keep everything).
+    pub fn fill_mask(&mut self, value: u8) -> bool {
+        match self.mask.as_mut() {
+            Some(mask) => {
+                mask.fill(Rgba::grey(value));
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Mask coverage at pixel index (`1.0` when no mask is applied).
+    pub fn mask_coverage(&self, index: usize) -> f32 {
+        match (self.mask_enabled, self.mask.as_ref()) {
+            (true, Some(mask)) => mask.pixel_at(index).r as f32 / 255.0,
+            _ => 1.0,
         }
     }
 }
 
 /// A stack of layers plus the canvas size.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PaintDocument {
     pub width: u32,
     pub height: u32,
@@ -321,6 +361,20 @@ impl PaintDocument {
         self.active
     }
 
+    /// Copy the active layer (pixels, mask, blend and opacity) directly above
+    /// it and make the copy active.
+    pub fn duplicate_active_layer(&mut self) -> bool {
+        let Some(source) = self.layers.get(self.active) else {
+            return false;
+        };
+        let mut copy = source.clone();
+        copy.name = format!("{} copy", source.name);
+        let at = self.active + 1;
+        self.layers.insert(at, copy);
+        self.active = at;
+        true
+    }
+
     /// Remove the active layer (never removes the last remaining layer).
     pub fn remove_active_layer(&mut self) -> bool {
         if self.layers.len() <= 1 {
@@ -378,8 +432,12 @@ pub fn composite_layer(dst: &mut RasterImage, layer: &PaintLayer) {
         if src.a == 0 {
             continue;
         }
+        let coverage = op * layer.mask_coverage(i);
+        if coverage <= 0.0 {
+            continue;
+        }
         let dst_c = dst.pixel_at(i);
-        let blended = RasterImage::blend(dst_c, src, op as f32, layer.blend);
+        let blended = RasterImage::blend(dst_c, src, coverage, layer.blend);
         dst.set_index(i, blended);
     }
 }

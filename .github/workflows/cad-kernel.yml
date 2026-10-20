@@ -1,0 +1,48 @@
+# Builds polyforge-cad with the OCCT-backed `cad_kernel` feature.
+# Heavy native dependency (vcpkg opencascade), so it runs on Windows runners
+# and is opt-in via workflow_dispatch plus path filters.
+name: CAD kernel (OCCT)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "crates/polyforge-occt-sys/**"
+      - "crates/polyforge-cad/**"
+      - ".github/workflows/cad-kernel.yml"
+  pull_request:
+    paths:
+      - "crates/polyforge-occt-sys/**"
+      - "crates/polyforge-cad/**"
+      - ".github/workflows/cad-kernel.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OCCT via vcpkg
+        shell: pwsh
+        run: |
+          vcpkg install opencascade:x64-windows
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: cad-kernel
+
+      - name: Check (cad_kernel)
+        shell: pwsh
+        run: |
+          $env:OCCT_ROOT = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\x64-windows"
+          $env:PATH = "$(Join-Path $env:OCCT_ROOT 'bin');$env:PATH"
+          cargo check -p polyforge-cad --features cad_kernel
+
+      - name: Test (cad_kernel)
+        shell: pwsh
+        run: |
+          $env:OCCT_ROOT = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\x64-windows"
+          $env:PATH = "$(Join-Path $env:OCCT_ROOT 'bin');$env:PATH"
+          cargo test -p polyforge-cad --features cad_kernel
