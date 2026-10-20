@@ -9,6 +9,8 @@ use bevy_egui::EguiContexts;
 use polyforge_core::{pick_face, ActiveMesh, AppMode, EditableMesh, PickHit, WorkspaceState};
 use polyforge_paint::{projection, PaintState};
 
+/// Result of a mesh pick.
+
 /// Paint stroke state carried between frames.
 #[derive(Default)]
 pub struct PaintStroke {
@@ -142,3 +144,93 @@ fn barycentric_3d(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<(f32, f32, f32)>
     let wa = 1.0 - wb - wc;
     Some((wa, wb, wc))
 }
+
+/// GPU-side paint texture and the material it was temporarily bound to.
+#[derive(Resource)]
+pub struct PaintTextureBinding {
+    image: Option<Handle<bevy::image::Image>>,
+    revision: u64,
+    bound_material: Option<Handle<StandardMaterial>>,
+    original_texture: Option<Handle<bevy::image::Image>>,
+    original_color: Option<Color>,
+}
+
+impl Default for PaintTextureBinding {
+    fn default() -> Self {
+        Self {
+            image: None,
+            revision: u64::MAX,
+            bound_material: None,
+            original_texture: None,
+            original_color: None,
+        }
+    }
+}
+
+/// Bind the composited paint canvas to the active mesh material while in Paint
+/// mode, re-uploading only when `PaintState::revision` changes.
+pub fn paint_texture_system(
+    workspace: Res<WorkspaceState>,
+    paint: Res<PaintState>,
+    mut binding: ResMut<PaintTextureBinding>,
+    mut images: ResMut<Assets<bevy::image::Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mesh_q: Query<&MeshMaterial3d<StandardMaterial>, With<ActiveMesh>>,
+) {
+    if workspace.mode != AppMode::Paint {
+        if let Some(mat_handle) = binding.bound_material.take() {
+            if let Some(mut material) = materials.get_mut(&mat_handle) {
+                material.base_color_texture = binding.original_texture.take();
+                if let Some(color) = binding.original_color.take() {
+                    material.base_color = color;
+                }
+            }
+            binding.image = None;
+            binding.revision = u64::MAX;
+        }
+        return;
+    }
+
+    let Ok(material_handle) = mesh_q.single() else {
+        return;
+    };
+    let material_handle = material_handle.0.clone();
+
+    if binding.bound_material.as_ref() != Some(&material_handle) {
+        if let Some(previous) = binding.bound_material.take() {
+            if let Some(mut material) = materials.get_mut(&previous) {
+                material.base_color_texture = binding.original_texture.take();
+                if let Some(color) = binding.original_color.take() {
+                    material.base_color = color;
+                }
+            }
+        }
+        if let Some(mut material) = materials.get_mut(&material_handle) {
+            binding.original_texture = material.base_color_texture.clone();
+            binding.original_color = Some(material.base_color);
+        }
+        binding.bound_material = Some(material_handle.clone());
+        binding.revision = u64::MAX;
+    }
+
+    if binding.revision != paint.revision || binding.image.is_none() {
+        let image = paint.document.composite().to_bevy_image();
+        match binding.image.clone() {
+            Some(handle) => {
+                images.insert(&handle, image);
+            }
+            None => {
+                binding.image = Some(images.add(image));
+            }
+        }
+        binding.revision = paint.revision;
+    }
+
+    if let (Some(image), Some(mut material)) =
+        (binding.image.clone(), materials.get_mut(&material_handle))
+    {
+        material.base_color_texture = Some(image);
+        material.base_color = Color::WHITE;
+    }
+}
+

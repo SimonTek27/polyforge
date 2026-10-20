@@ -171,7 +171,7 @@ struct EditorUiParams<'w, 's> {
     selection_q: Query<
         'w,
         's,
-        (&'static EditableMesh, &'static Selection),
+        (&'static mut EditableMesh, &'static Selection),
         (With<ActiveMesh>, Without<CadBody>),
     >,
     workspace: ResMut<'w, WorkspaceState>,
@@ -207,7 +207,7 @@ fn editor_ui_system(params: EditorUiParams) {
         mut gizmo,
         mut i18n,
         marquee,
-        selection_q,
+        mut selection_q,
         mut workspace,
         mut settings,
         mut commands,
@@ -916,6 +916,14 @@ fn editor_ui_system(params: EditorUiParams) {
                         paint.fill_active();
                     }
                 });
+                if ui.button("Box project UVs").clicked() {
+                    if let Ok((mut mesh, _sel)) = selection_q.single_mut() {
+                        polyforge_uv::project_box(&mut mesh);
+                        paint.dirty = true;
+                        paint.revision += 1;
+                    }
+                }
+                ui.small("Box projection lets you paint the active mesh.");
 
                 ui.separator();
                 ui.label("Layers");

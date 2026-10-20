@@ -40,7 +40,7 @@ use camera::{OrbitCamera, orbit_camera_system};
 use gizmo_sys::{update_gizmo_origin, gizmo_interaction_system, draw_gizmo_system};
 use hotkeys::hotkey_system;
 use print_panel::{print_panel_system, print_preview_system, PrintUiState};
-use paint_sys::paint_stroke_system;
+use paint_sys::{paint_stroke_system, paint_texture_system, PaintTextureBinding};
 use scene_ops::{
     cycle_active_object_system, separate_object_system, join_active_objects_system,
     mirror_modifier_system, array_modifier_hotkeys, collection_visibility_system,
@@ -83,6 +83,7 @@ fn main() {
         .init_resource::<MacroRunner>()
         .init_resource::<AutoSaveTimer>()
         .init_resource::<PrintUiState>()
+        .init_resource::<PaintTextureBinding>()
         .add_systems(Startup, (setup_scene, setup_plugin_commands))
         .add_systems(
             bevy_egui::EguiPrimaryContextPass,
@@ -129,9 +130,12 @@ fn main() {
                 vector_io_system,
                 scene_hotkeys,
                 print_preview_system,
-                paint_stroke_system,
                 auto_save_system,
             ),
+        )
+        .add_systems(
+            Update,
+            (paint_stroke_system, paint_texture_system).chain(),
         )
         .run();
 }
