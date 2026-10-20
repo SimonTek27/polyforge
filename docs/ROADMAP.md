@@ -112,6 +112,7 @@ STL export, Parallel/Coincident, residual solve loop.
 |------|--------|
 | `polyforge-paint` crate: layers, brush engine, PNG I/O, UV projection | done |
 | Paint panel: tools, brush settings, blend mode, layers, save PNG | done |
+| Live composited canvas preview (egui texture, rebuilt on `revision`) | done |
 | Viewport raycast -> hit face -> barycentric UV -> stroke stamping | done |
 | `polyforge-bridge`: VectorCraft / PhotoCraft launch + vendor pin check | done |
 | Vendor trees populated | todo (`./scripts/sync_artcraft.sh` with network) |

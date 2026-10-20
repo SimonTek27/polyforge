@@ -196,6 +196,8 @@ struct EditorUiParams<'w, 's> {
     mates_q: Query<'w, 's, (Entity, &'static mut AssemblyMate)>,
     names_q: Query<'w, 's, &'static polyforge_core::ObjectName>,
     paint: ResMut<'w, PaintState>,
+    preview_tex: Local<'s, Option<egui::TextureHandle>>,
+    preview_rev: Local<'s, u64>,
 }
 
 fn editor_ui_system(params: EditorUiParams) {
@@ -220,6 +222,8 @@ fn editor_ui_system(params: EditorUiParams) {
         mut mates_q,
         names_q,
         mut paint,
+        mut preview_tex,
+        mut preview_rev,
     } = params;
 
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -819,6 +823,31 @@ fn editor_ui_system(params: EditorUiParams) {
                 ui.small("PhotoCraft companion");
                 ui.separator();
 
+                // Live composite preview
+                if *preview_rev != paint.revision || preview_tex.is_none() {
+                    let (w, h) = paint.canvas_size();
+                    let rgba = paint.composite_rgba();
+                    let image =
+                        egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
+                    *preview_tex = Some(ui.ctx().load_texture(
+                        "polyforge_paint_preview",
+                        image,
+                        egui::TextureOptions::NEAREST,
+                    ));
+                    *preview_rev = paint.revision;
+                }
+                if let Some(tex) = preview_tex.as_ref() {
+                    let aspect =
+                        paint.document.height as f32 / paint.document.width.max(1) as f32;
+                    let width = ui.available_width();
+                    let size = egui::vec2(width, (width * aspect).max(1.0));
+                    ui.add(egui::Image::new(egui::load::SizedTexture::new(
+                        tex.id(),
+                        size,
+                    )));
+                }
+                ui.separator();
+
                 // Tools
                 ui.horizontal_wrapped(|ui| {
                     for tool in PaintTool::all() {
@@ -881,6 +910,7 @@ fn editor_ui_system(params: EditorUiParams) {
                             layer.pixels.fill(Rgba::TRANSPARENT);
                         }
                         paint.dirty = true;
+                        paint.revision += 1;
                     }
                     if ui.button("Fill").clicked() {
                         paint.fill_active();
@@ -900,6 +930,8 @@ fn editor_ui_system(params: EditorUiParams) {
                         let mut visible = paint.document.layers[i].visible;
                         if ui.checkbox(&mut visible, "eye").changed() {
                             paint.document.layers[i].visible = visible;
+                            paint.dirty = true;
+                            paint.revision += 1;
                         }
                     });
                 }
@@ -912,14 +944,24 @@ fn editor_ui_system(params: EditorUiParams) {
                     }
                     if ui.button("^").on_hover_text("Move up").clicked() {
                         paint.document.move_active_up();
+                        paint.dirty = true;
+                        paint.revision += 1;
                     }
                     if ui.button("v").on_hover_text("Move down").clicked() {
                         paint.document.move_active_down();
+                        paint.dirty = true;
+                        paint.revision += 1;
                     }
                 });
                 let active_layer = paint.document.active;
                 if let Some(layer) = paint.document.layers.get_mut(active_layer) {
-                    ui.add(egui::Slider::new(&mut layer.opacity, 0.0..=1.0).text("Layer alpha"));
+                    if ui
+                        .add(egui::Slider::new(&mut layer.opacity, 0.0..=1.0).text("Layer alpha"))
+                        .changed()
+                    {
+                        paint.dirty = true;
+                        paint.revision += 1;
+                    }
                 }
 
                 ui.separator();

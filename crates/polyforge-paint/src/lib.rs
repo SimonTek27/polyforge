@@ -41,6 +41,8 @@ pub struct PaintState {
     pub clone_offset: (f32, f32),
     /// Set whenever pixels change so the GPU texture can be re-uploaded.
     pub dirty: bool,
+    /// Monotonic counter bumped on every mutation (layers, brush stamps, UI edits).
+    pub revision: u64,
 }
 
 impl Default for PaintState {
@@ -52,6 +54,7 @@ impl Default for PaintState {
             blend: BlendMode::default(),
             clone_offset: (0.0, 0.0),
             dirty: false,
+            revision: 0,
         }
     }
 }
@@ -65,6 +68,7 @@ impl PaintState {
     pub fn reset(&mut self, width: u32, height: u32) {
         self.document = PaintDocument::new(width, height);
         self.dirty = true;
+        self.revision += 1;
     }
 
     /// Paint a single brush dab at pixel `(x, y)` on the active layer.
@@ -79,6 +83,7 @@ impl PaintState {
             blend,
             clone_offset,
             dirty,
+            revision,
             ..
         } = self;
 
@@ -102,6 +107,7 @@ impl PaintState {
         let mut session = StrokeSession::new(&layer.pixels, brush, *tool, *blend, clone);
         session.dab(&mut layer.pixels, x, y);
         *dirty = true;
+        *revision += 1;
     }
 
     /// Stamp a straight stroke between two points on the active layer.
@@ -113,6 +119,7 @@ impl PaintState {
             blend,
             clone_offset,
             dirty,
+            revision,
             ..
         } = self;
 
@@ -131,6 +138,7 @@ impl PaintState {
         let mut session = StrokeSession::new(&layer.pixels, brush, *tool, *blend, clone);
         session.stroke_to(&mut layer.pixels, from, to);
         *dirty = true;
+        *revision += 1;
     }
 
     /// Fill the whole active layer with the brush colour.
@@ -138,17 +146,20 @@ impl PaintState {
         if let Some(layer) = self.document.active_layer_mut() {
             fill_all(&mut layer.pixels, self.brush.color, self.brush.opacity, self.blend);
             self.dirty = true;
+            self.revision += 1;
         }
     }
 
     pub fn add_layer(&mut self) {
         self.document.add_layer();
         self.dirty = true;
+        self.revision += 1;
     }
 
     pub fn remove_active_layer(&mut self) {
         if self.document.remove_active_layer() {
             self.dirty = true;
+            self.revision += 1;
         }
     }
 
