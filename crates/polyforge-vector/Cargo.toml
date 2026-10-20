@@ -1,10 +1,11 @@
+
 [package]
 name = "polyforge-vector"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "VectorMode: 2D paths, curves, fills"
+description = "VectorMode: 2D paths, curves, fills (Phase 4 scaffold)"
 
 [dependencies]
 bevy = { workspace = true }

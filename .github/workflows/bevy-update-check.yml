@@ -1,0 +1,30 @@
+# Priority #1: detect when PolyForge lags behind crates.io Bevy.
+name: Bevy update check
+
+on:
+  schedule:
+    # Mondays 09:00 UTC
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+  push:
+    paths:
+      - "Cargo.toml"
+      - "bevy-compat.toml"
+      - "scripts/check_bevy_update.sh"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "bevy-compat.toml"
+
+jobs:
+  check-bevy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Bevy version vs crates.io
+        run: |
+          chmod +x scripts/check_bevy_update.sh
+          ./scripts/check_bevy_update.sh
+        # Exit 1 = update available → fail the job so it is visible
+        continue-on-error: false

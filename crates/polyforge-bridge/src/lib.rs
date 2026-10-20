@@ -1,4 +1,12 @@
 //! Bridge between PolyForge and ArtCraft upstream apps (VectorCraft, PhotoCraft).
+//!
+//! Upstream trees live under `vendor/` and are refreshed by
+//! `scripts/sync_artcraft.sh`. This crate does **not** recompile those apps into
+//! the Bevy process (they are full editors). It:
+//! - records integration metadata from `vendor/pins.toml` (when present)
+//! - can spawn the external editors when built/installed beside PolyForge
+//! - exposes format affinities (SVG ↔ VectorCraft, raster/PSD ↔ PhotoCraft)
+
 use bevy::prelude::*;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -35,6 +43,7 @@ pub struct ArtCraftIntegration {
 }
 
 fn default_vendor_root() -> PathBuf {
+    // Walk up from CARGO_MANIFEST_DIR-style guesses at runtime
     PathBuf::from("vendor")
 }
 
@@ -51,6 +60,17 @@ fn load_artcraft_pins(mut integ: ResMut<ArtCraftIntegration>) {
     }
     integ.vectorcraft_available = integ.vendor_root.join("vectorcraft").join("Cargo.toml").is_file();
     integ.photocraft_available = integ.vendor_root.join("photocraft").join("Cargo.toml").is_file();
+    bevy::log::info!(
+        "ArtCraft bridge: VectorCraft {} ({}), PhotoCraft {} ({})",
+        if integ.vectorcraft_available { "vendor OK" } else { "not vendored" },
+        short(&integ.vectorcraft.pin_sha),
+        if integ.photocraft_available { "vendor OK" } else { "not vendored" },
+        short(&integ.photocraft.pin_sha),
+    );
+}
+
+fn short(s: &str) -> &str {
+    if s.len() >= 12 { &s[..12] } else if s.is_empty() { "unpinned" } else { s }
 }
 
 fn parse_section(text: &str, section: &str) -> Option<UpstreamPin> {
@@ -81,6 +101,7 @@ fn parse_section(text: &str, section: &str) -> Option<UpstreamPin> {
     })
 }
 
+/// Try to run VectorCraft from vendor or PATH.
 pub fn launch_vectorcraft(vendor_root: &Path) -> Result<(), String> {
     let local = vendor_root.join("vectorcraft");
     if local.join("Cargo.toml").is_file() {
@@ -93,10 +114,11 @@ pub fn launch_vectorcraft(vendor_root: &Path) -> Result<(), String> {
     }
     Command::new("vectorcraft")
         .spawn()
-        .map_err(|_| "VectorCraft not found. Run bash scripts/sync_artcraft.sh".into())?;
+        .map_err(|_| String::from("VectorCraft not found in vendor/ or PATH. Run ./scripts/sync_artcraft.sh"))?;
     Ok(())
 }
 
+/// Try to run PhotoCraft from vendor or PATH.
 pub fn launch_photocraft(vendor_root: &Path) -> Result<(), String> {
     let local = vendor_root.join("photocraft");
     if local.join("Cargo.toml").is_file() {
@@ -109,9 +131,12 @@ pub fn launch_photocraft(vendor_root: &Path) -> Result<(), String> {
     }
     Command::new("photocraft")
         .spawn()
-        .map_err(|_| "PhotoCraft not found. Run bash scripts/sync_artcraft.sh".into())?;
+        .map_err(|_| String::from("PhotoCraft not found in vendor/ or PATH. Run ./scripts/sync_artcraft.sh"))?;
     Ok(())
 }
 
+/// Formats VectorCraft is expected to exchange with PolyForge VectorMode.
 pub const VECTOR_EXCHANGE: &[&str] = &["svg", "svgz", "pdf"];
+
+/// Formats PhotoCraft is expected to exchange with PolyForge materials / textures.
 pub const PHOTO_EXCHANGE: &[&str] = &["png", "jpeg", "jpg", "webp", "psd", "tiff"];

@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- Mesh cube / Blender-style solid -->
   <path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z" stroke="#7EB8FF" stroke-width="1.75" stroke-linejoin="round"/>
   <path d="M12 21V12M12 12L4 7.5M12 12L20 7.5" stroke="#7EB8FF" stroke-width="1.75" stroke-linejoin="round"/>
 </svg>

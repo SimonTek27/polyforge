@@ -1,14 +1,22 @@
 # Upstream ArtCraft apps integrated with PolyForge.
-# Run: bash scripts/sync_artcraft.sh
+# POLICY: These pins MUST be refreshed whenever upstream moves.
+# Run:  ./scripts/sync_artcraft.sh
+# CI:   .github/workflows/artcraft-upstream-check.yml
+#
+# Licenses: PhotoCraft & VectorCraft are MIT OR Apache-2.0 (code).
+# PolyForge remains GPL-3.0-or-later. Combined distribution must
+# satisfy GPL for PolyForge code and preserve upstream notices.
+# ArtCraft names/logos are trademarks of their owners — not relicensed.
 
 [vectorcraft]
 repo = "https://github.com/storytold/vectorcraft.git"
 homepage = "https://getartcraft.com/apps/vectorcraft"
 license = "MIT OR Apache-2.0"
+# Pin to a release tag when possible; otherwise main SHA.
 pin_ref = "main"
-pin_sha = "a466625c8987550635cda951ebf36e08e1e80a56"
+pin_sha = "a466625c8987550635cda951ebf36e08e1e80a56"  # filled by sync_artcraft.sh
 last_checked = "2026-10-19"
-role = "VectorMode reference + optional external editor"
+role = "VectorMode reference + optional external editor for advanced illustration"
 polyforge_mode = "Vector"
 
 [photocraft]
@@ -18,11 +26,15 @@ license = "MIT OR Apache-2.0"
 pin_ref = "main"
 pin_sha = "d95fdf3181c01ad41e95456091a394b105a9afb2"
 last_checked = "2026-10-19"
-role = "Raster / texture companion"
+role = "Raster / texture / image pipeline companion for materials and baking"
 polyforge_mode = "Photo"
 
 [policy]
+# track_latest = always aim for upstream main/latest release
 mode = "track_latest"
+# Fail CI if upstream is newer than pin by more than this many commits (0 = any drift fails)
 max_commits_behind = 0
+# Submodule paths under vendor/
 vectorcraft_path = "vendor/vectorcraft"
 photocraft_path = "vendor/photocraft"
+auto_commit_message = "chore: sync ArtCraft upstream (VectorCraft + PhotoCraft)"

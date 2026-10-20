@@ -1,18 +1,13 @@
-//! ECS components for editable objects in the scene.
+//! Extra Bevy components used by the editor.
 
 use bevy::prelude::*;
 
-/// Marks an entity as an editable mesh object in the scene.
-#[derive(Component, Debug, Clone, Default, Reflect)]
+/// Marker for objects that can be edited in the viewport.
+#[derive(Component, Reflect, Default)]
 #[reflect(Component)]
 pub struct EditableObject;
 
-/// Marks the currently active mesh for editing tools.
-#[derive(Component, Debug, Clone, Default, Reflect)]
+/// Marker for the currently active (focused) mesh.
+#[derive(Component, Reflect, Default)]
 #[reflect(Component)]
 pub struct ActiveMesh;
-
-/// Unique mesh identifier within a scene/document.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, Default)]
-#[reflect(Component)]
-pub struct MeshId(pub u64);

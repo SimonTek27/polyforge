@@ -1,5 +1,8 @@
 name: ArtCraft upstream check
 
+# Fail the job when VectorCraft or PhotoCraft move past vendor/pins.toml.
+# Same priority pattern as Bevy updates: stay current with upstream.
+
 on:
   schedule:
     - cron: "0 */12 * * *"
@@ -16,5 +19,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check VectorCraft + PhotoCraft pins
         run: |
-          chmod +x scripts/sync_artcraft.sh || true
-          bash scripts/sync_artcraft.sh --check
+          chmod +x scripts/sync_artcraft.sh
+          ./scripts/sync_artcraft.sh --check

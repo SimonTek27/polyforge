@@ -1,31 +1,25 @@
-# Publishing PolyForge to GitHub
+# Publish / sync to GitHub
 
 Repository: https://github.com/SimonTek27/polyforge
 
-## Full source push (recommended on your machine)
+## Full sync (recommended)
 
-The sandbox cannot use `git push` (no credentials). From a clone with auth:
+Local commits may be ahead of `origin` when HTTPS credentials are unavailable in the sandbox.
 
 ```bash
-# Option A — replace remote tree with local workspace
 cd polyforge
-git add -A
-git commit -m "sync: full PolyForge source"
+git remote -v   # should be https://github.com/SimonTek27/polyforge.git
 git push -u origin main
-
-# Option B — unpack the full archive then push
-tar xzf polyforge-full-src.tar.gz
-cd polyforge   # or the extracted folder
-git init
-git remote add origin https://github.com/SimonTek27/polyforge.git
-git add -A
-git commit -m "Import full PolyForge source"
-git branch -M main
-git push -u origin main
+# if history diverged:
+# git push -u origin main --force
 ```
 
-## What the API sync already has
+## Partial API sync
 
-Partial updates via GitHub API: workspace Cargo.toml, all crate Cargo.toml, docs/ROADMAP, some modules.
+The connected GitHub tool can push file batches without local credentials.
+Prefer a single `git push` from a machine with `gh auth login` or a PAT.
 
-For a **complete** tree matching the sandbox, use Option A/B above or the `polyforge-full-src.tar.gz` artifact.
+## After push
+
+- Confirm tree on GitHub includes `crates/polyforge-app/src/main.rs` and all ops modules.
+- CI: `.github/workflows/bevy-update-check.yml` runs weekly.

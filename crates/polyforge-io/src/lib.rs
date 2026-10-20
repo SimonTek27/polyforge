@@ -9,11 +9,15 @@ pub mod obj;
 pub mod project;
 pub mod gltf_export;
 pub mod gltf_import;
+pub mod scene_project;
+pub mod stl;
+pub use stl::*;
 
 pub use obj::*;
 pub use project::*;
 pub use gltf_export::*;
 pub use gltf_import::*;
+pub use scene_project::*;
 
 pub struct PolyForgeIoPlugin;
 impl Plugin for PolyForgeIoPlugin {

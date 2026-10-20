@@ -1,18 +1,34 @@
 # PolyForge ↔ Bevy compatibility registry
-# RULE: Bevy updates are always priority.
+# ─────────────────────────────────────────
+# RULE: Bevy updates are always priority. When a new Bevy release
+# ships, this file and Cargo.toml MUST be updated before other work.
+#
+# Update process: see docs/BEVY_UPDATE.md
+# Check for updates:  ./scripts/check_bevy_update.sh
+# Apply pin bump:     ./scripts/bump_bevy.sh <version>
 
 [bevy]
+# Exact major.minor we target (patch floats within Cargo semver)
 version = "0.20"
+# Full version last verified to compile against this tree
 verified = "0.20.0"
+# Migration guide used for the last upgrade
 migration_guide = "https://bevyengine.org/learn/migration-guides/0-19-to-0-20/"
+# Release notes
 release_notes = "https://bevyengine.org/news/bevy-0-20/"
+# Minimum Rust version required by this Bevy line (MSRV)
 msrv = "1.97.1"
 
 [companions]
+# Must stay compatible with [bevy].version
 bevy_egui = "0.43"
 glam = "0.29"
 
 [policy]
+# "strict" = refuse to merge PRs that lag more than one minor behind latest Bevy
+# "track_latest" = always aim for crates.io max stable Bevy
 mode = "track_latest"
+# Days after a Bevy release before an upgrade PR is considered overdue
 overdue_days = 14
+# Priority rank (1 = highest). Used by automation and humans.
 priority = 1

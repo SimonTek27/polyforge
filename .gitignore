@@ -16,4 +16,8 @@ Thumbs.db
 
 # Bevy / assets cache
 imported_assets/
-.assets_cache/
+.assets/
+
+# ArtCraft upstream clones (pins.toml + NOTICE are tracked)
+vendor/vectorcraft/
+vendor/photocraft/

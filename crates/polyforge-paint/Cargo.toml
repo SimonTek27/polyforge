@@ -1,0 +1,14 @@
+[package]
+name = "polyforge-paint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Texture / raster paint pipeline for PolyForge Paint mode (brush, erase, clone, layers)"
+
+[dependencies]
+bevy = { workspace = true }
+log = { workspace = true }
+
+[features]
+default = []

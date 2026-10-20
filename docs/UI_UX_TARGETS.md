@@ -24,6 +24,9 @@
 | **Paint** | Brush pipeline + Open PhotoCraft |
 | **Vector** | Rect / Pen / Pathfinder / Auto G1 + Open VectorCraft |
 
+Side panels (tool shelf, properties, model tree, layers) remain mode-specific under the ribbon.
+
+
 ## Mode icons (SVG)
 
 Source files in `assets/icons/`:

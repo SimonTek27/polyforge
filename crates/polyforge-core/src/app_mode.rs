@@ -26,6 +26,7 @@ impl AppMode {
         }
     }
 
+    /// Short label for the titlebar mode chip.
     pub fn short(self) -> &'static str {
         match self {
             AppMode::Poly => "Poly",
@@ -35,12 +36,13 @@ impl AppMode {
         }
     }
 
+    /// Titlebar mode glyph (emoji / symbol).
     pub fn icon(self) -> &'static str {
         match self {
-            AppMode::Poly => "🧊",
-            AppMode::Cad => "📐",
-            AppMode::Paint => "🎨",
-            AppMode::Vector => "✎",
+            AppMode::Poly => "🧊",   // mesh / solid cube
+            AppMode::Cad => "📐",    // parametric / drafting
+            AppMode::Paint => "🎨",  // paint / photo
+            AppMode::Vector => "✎",  // pen / vector
         }
     }
 
@@ -58,11 +60,13 @@ impl AppMode {
     }
 }
 
+/// Global workspace mode + chrome flags.
 #[derive(Resource, Debug, Clone)]
 pub struct WorkspaceState {
     pub mode: AppMode,
     pub show_settings: bool,
     pub show_help: bool,
+    pub show_print: bool,
 }
 
 impl Default for WorkspaceState {
@@ -71,10 +75,12 @@ impl Default for WorkspaceState {
             mode: AppMode::Poly,
             show_settings: false,
             show_help: false,
+            show_print: false,
         }
     }
 }
 
+/// User preferences (Settings panel).
 #[derive(Resource, Debug, Clone)]
 pub struct AppSettings {
     pub units: Units,
@@ -101,6 +107,7 @@ impl Default for AppSettings {
     }
 }
 
+/// CadCraft-style command line (typed aliases: L, C, EXT, BOX…).
 #[derive(Resource, Debug, Clone)]
 pub struct CommandLineState {
     pub input: String,

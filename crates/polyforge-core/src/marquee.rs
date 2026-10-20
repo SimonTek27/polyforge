@@ -30,6 +30,7 @@ impl MarqueeState {
         }
         self.active = false;
         let rect = MarqueeRect::from_corners(self.start, self.current);
+        // Ignore tiny drags (treated as clicks elsewhere)
         if rect.width() < 3.0 && rect.height() < 3.0 {
             return None;
         }
@@ -81,6 +82,8 @@ impl MarqueeRect {
 #[derive(Resource, Debug, Clone, Default)]
 pub struct VertexDragState {
     pub active: bool,
+    /// Screen position when drag started.
     pub start_screen: Vec2,
+    /// Last screen position (for incremental deltas).
     pub last_screen: Vec2,
 }

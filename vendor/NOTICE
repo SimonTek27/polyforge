@@ -1,9 +1,11 @@
 Third-party upstream trees under vendor/:
 
   vectorcraft/  — https://github.com/storytold/vectorcraft
-                  License: MIT OR Apache-2.0
+                  License: MIT OR Apache-2.0 (see upstream LICENSE files)
   photocraft/   — https://github.com/storytold/photocraft
-                  License: MIT OR Apache-2.0
+                  License: MIT OR Apache-2.0 (see upstream LICENSE files)
 
-ArtCraft names and logos are trademarks of their respective owners.
+ArtCraft, VectorCraft and PhotoCraft names and logos are trademarks of their
+respective owners and are not open-sourced by this notice.
+
 PolyForge itself remains GPL-3.0-or-later.

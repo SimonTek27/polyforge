@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Bridge to ArtCraft upstream (VectorCraft, PhotoCraft)"
+description = "Bridge to ArtCraft upstream (VectorCraft, PhotoCraft): pins, launch, format hints"
 
 [dependencies]
 bevy = { workspace = true }

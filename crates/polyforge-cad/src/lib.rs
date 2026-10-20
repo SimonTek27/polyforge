@@ -1,8 +1,8 @@
 //! # polyforge-cad
 //!
 //! CadMode: parametric solid bodies, sketches, feature history, solvers, assembly.
-//! Tessellates to EditableMesh for the Bevy viewport.
-//! Real B-rep kernel (OCCT) is staged behind the cad_kernel feature.
+//! Tessellates to [`polyforge_core::EditableMesh`] for the Bevy viewport.
+//! Real B-rep kernel (OCCT) is staged behind the `cad_kernel` feature.
 
 use bevy::prelude::*;
 use polyforge_core::EditableMesh;
@@ -60,6 +60,7 @@ impl Plugin for PolyForgeCadPlugin {
     }
 }
 
+/// CadMode session state (active body, sketch edit).
 #[derive(Resource, Debug, Clone, Default)]
 pub struct CadWorkspace {
     pub active_body: Option<Entity>,
@@ -69,6 +70,7 @@ pub struct CadWorkspace {
     pub selected_feature: usize,
 }
 
+/// Marker: entity is a CAD solid body (not a free mesh object).
 #[derive(Component, Reflect, Debug, Clone, Default)]
 #[reflect(Component)]
 pub struct CadBody {
@@ -92,5 +94,6 @@ impl CadBody {
     }
 }
 
+/// Display mesh produced by tessellation (sibling of feature graph).
 #[derive(Component, Debug, Clone, Default)]
 pub struct CadDisplayMesh(pub EditableMesh);
