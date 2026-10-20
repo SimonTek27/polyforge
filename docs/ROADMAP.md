@@ -104,8 +104,8 @@ fallback.
 | Step | Status | Notes |
 |------|--------|-------|
 | 0. Prereqs on build machine | todo | OCCT 7.8+ dev (vcpkg `opencascade` or official installer), MSVC toolchain, `OCCT_ROOT` env, DLLs on `PATH` |
-| 1. `polyforge-occt-sys` shim crate | todo | C++ shim exposing a C ABI (cc + bindgen); no Rust-side OCCT types |
-| 2. Kernel trait wiring | todo | `SolidKernel` already exists (`polyforge-cad/src/kernel.rs`); implement `OcctKernel` under `--features cad_kernel` |
+| 1. `polyforge-occt-sys` shim crate | done | C++ shim (`shim.cpp`) + C ABI (primitives, fuse/cut, fillet, triangulate, STEP read/write); `build.rs` no-op without `occt` feature |
+| 2. Kernel trait wiring | partial | `SolidKernel` exists; `OcctKernel` links/initialises OCCT under `--features cad_kernel`, feature mapping still TODO |
 | 3. Primitives + booleans | todo | BRepPrimAPI (box/cyl/sphere/cone), BRepAlgoAPI cut/fuse; keep mesh fallback |
 | 4. Fillets/chamfers | todo | BRepFilletAPI; replaces `fillet.rs` approximation |
 | 5. Tessellation bridge | todo | BRepMesh_IncrementalMesh -> triangles/positions/normals -> `EditableMesh` |
@@ -115,7 +115,10 @@ fallback.
 Verification: `cargo build -p polyforge-cad --features cad_kernel`; volume/area
 tests within tolerance; STEP round-trip; boolean volume checks.
 
-Blocked here: this sandbox has no OCCT installed, so steps 1-7 must be developed
+Current status: crate builds without OCCT by default; enabling `cad_kernel`
+fails fast with an actionable `OCCT_ROOT` message when OCCT is absent.
+
+Blocked here: this sandbox has no OCCT installed, so steps 3-7 must be developed
 where the native dependency and packaging decisions (static vs dynamic link,
 DLL redistribution) can be validated.
 

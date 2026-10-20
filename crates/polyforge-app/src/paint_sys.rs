@@ -173,7 +173,7 @@ fn upsert(
 ) {
     match slot {
         Some(handle) => {
-            images.insert(handle, image);
+            let _ = images.insert(handle, image);
         }
         None => {
             *slot = Some(images.add(image));

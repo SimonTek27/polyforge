@@ -1,0 +1,18 @@
+[package]
+name = "polyforge-occt-sys"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Raw C ABI shim and Rust bindings for OpenCASCADE (OCCT)"
+links = "polyforge_occt_shim"
+
+[dependencies]
+
+[build-dependencies]
+cc = { workspace = true }
+
+[features]
+default = []
+# Enables compiling the C++ shim and linking OCCT. Requires `OCCT_ROOT`.
+occt = []

@@ -11,7 +11,8 @@ bevy = { workspace = true }
 polyforge-core = { workspace = true }
 serde = { workspace = true }
 log = { workspace = true }
+polyforge-occt-sys = { workspace = true, optional = true }
 
 [features]
 default = []
-cad_kernel = []
+cad_kernel = ["dep:polyforge-occt-sys", "polyforge-occt-sys/occt"]

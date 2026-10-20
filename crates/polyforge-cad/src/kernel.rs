@@ -24,19 +24,42 @@ impl SolidKernel for MeshKernel {
     }
 }
 
-/// Placeholder for future OCCT backend (`--features cad_kernel`).
+/// Placeholder for the OCCT backend (`--features cad_kernel`).
 #[cfg(feature = "cad_kernel")]
 pub struct OcctKernel;
 
 #[cfg(feature = "cad_kernel")]
 impl SolidKernel for OcctKernel {
     fn evaluate(&self, features: &[CadFeature]) -> EditableMesh {
-        // TODO: call OCCT when linked
+        if !occt_ready() {
+            return tessellate_features(features);
+        }
+        // TODO(Phase 34, step 3): map CadFeature to OCCT primitives/booleans,
+        // triangulate with `polyforge_occt_sys::triangulate` and build an
+        // EditableMesh. Until then the mesh backend is the fallback.
         tessellate_features(features)
     }
     fn name(&self) -> &'static str {
         "occt"
     }
+}
+
+#[cfg(feature = "cad_kernel")]
+fn occt_ready() -> bool {
+    use std::sync::OnceLock;
+    static READY: OnceLock<bool> = OnceLock::new();
+    *READY.get_or_init(|| {
+        let ok = polyforge_occt_sys::init();
+        if ok {
+            info!(
+                "OCCT kernel linked (version {})",
+                polyforge_occt_sys::version().unwrap_or_else(|| "unknown".into())
+            );
+        } else {
+            warn!("OCCT kernel failed to initialise; using mesh fallback");
+        }
+        ok
+    })
 }
 
 #[derive(Resource)]
