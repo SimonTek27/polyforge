@@ -155,8 +155,20 @@ impl RasterImage {
 
     /// Convert to a Bevy `Image` (sRGB, 2D).
     pub fn to_bevy_image(&self) -> bevy::image::Image {
+        self.to_bevy_image_with(bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb)
+    }
+
+    /// Convert to a linear-data Bevy `Image` (normal / ORM maps).
+    pub fn to_bevy_image_linear(&self) -> bevy::image::Image {
+        self.to_bevy_image_with(bevy::render::render_resource::TextureFormat::Rgba8Unorm)
+    }
+
+    fn to_bevy_image_with(
+        &self,
+        format: bevy::render::render_resource::TextureFormat,
+    ) -> bevy::image::Image {
         use bevy::asset::RenderAssetUsages;
-        use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+        use bevy::render::render_resource::{Extent3d, TextureDimension};
 
         bevy::image::Image::new(
             Extent3d {
@@ -166,7 +178,7 @@ impl RasterImage {
             },
             TextureDimension::D2,
             self.pixels.clone(),
-            TextureFormat::Rgba8UnormSrgb,
+            format,
             RenderAssetUsages::default(),
         )
     }

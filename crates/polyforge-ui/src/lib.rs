@@ -12,7 +12,9 @@ use polyforge_cad::{ActiveKernel, AssemblyMate, MateKind, sort_by_hierarchy,
 };
 use polyforge_vector::{VectorPath, VectorWorkspace, union_paths, intersect_paths, difference_paths};
 use polyforge_bridge::{ArtCraftIntegration, launch_vectorcraft, launch_photocraft};
-use polyforge_paint::{BlendMode as PaintBlendMode, PaintState, PaintTool, Rgba};
+use polyforge_paint::{
+    BlendMode as PaintBlendMode, PaintChannel, PaintState, PaintTool, Rgba,
+};
 use polyforge_core::{
     ActiveMesh, EditableMesh, EditableObject, EditorState, GizmoMode, GizmoState, I18n, Locale,
     MarqueeState, Msg, ObjectName, Selection, SelectionMode, Tool, CommandRegistry,
@@ -197,7 +199,7 @@ struct EditorUiParams<'w, 's> {
     names_q: Query<'w, 's, &'static polyforge_core::ObjectName>,
     paint: ResMut<'w, PaintState>,
     preview_tex: Local<'s, Option<egui::TextureHandle>>,
-    preview_rev: Local<'s, u64>,
+    preview_key: Local<'s, (u64, PaintChannel)>,
 }
 
 fn editor_ui_system(params: EditorUiParams) {
@@ -223,7 +225,7 @@ fn editor_ui_system(params: EditorUiParams) {
         names_q,
         mut paint,
         mut preview_tex,
-        mut preview_rev,
+        mut preview_key,
     } = params;
 
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -823,18 +825,35 @@ fn editor_ui_system(params: EditorUiParams) {
                 ui.small("PhotoCraft companion");
                 ui.separator();
 
-                // Live composite preview
-                if *preview_rev != paint.revision || preview_tex.is_none() {
-                    let (w, h) = paint.canvas_size();
-                    let rgba = paint.composite_rgba();
-                    let image =
-                        egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
+                // PBR channel selector
+                ui.horizontal_wrapped(|ui| {
+                    for channel in PaintChannel::all() {
+                        let clicked = ui
+                            .selectable_label(paint.channel == channel, channel.label())
+                            .clicked();
+                        if clicked && paint.channel != channel {
+                            paint.channel = channel;
+                            if let Some(color) = channel.default_color() {
+                                paint.brush.color = color;
+                            }
+                            *preview_tex = None;
+                        }
+                    }
+                });
+
+                // Live composite preview of the active channel
+                if *preview_key != (paint.revision, paint.channel) || preview_tex.is_none() {
+                    let preview = paint.composite_channel(paint.channel);
+                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                        [preview.width as usize, preview.height as usize],
+                        &preview.pixels,
+                    );
                     *preview_tex = Some(ui.ctx().load_texture(
                         "polyforge_paint_preview",
                         image,
                         egui::TextureOptions::NEAREST,
                     ));
-                    *preview_rev = paint.revision;
+                    *preview_key = (paint.revision, paint.channel);
                 }
                 if let Some(tex) = preview_tex.as_ref() {
                     let aspect =
@@ -868,14 +887,25 @@ fn editor_ui_system(params: EditorUiParams) {
                 ui.add(egui::Slider::new(&mut paint.brush.hardness, 0.0..=1.0).text("Hardness"));
                 ui.add(egui::Slider::new(&mut paint.brush.spacing, 0.05..=1.0).text("Spacing"));
 
-                // Colour
-                ui.horizontal(|ui| {
-                    ui.label("Colour");
-                    let mut rgb = paint.brush.color.to_rgb_f32();
-                    if ui.color_edit_button_rgb(&mut rgb).changed() {
-                        paint.brush.color = Rgba::from_rgb_f32(rgb[0], rgb[1], rgb[2]);
+                // Colour / channel value
+                if paint.channel.is_scalar() {
+                    let mut value = paint.brush.color.r as f32 / 255.0;
+                    if ui
+                        .add(egui::Slider::new(&mut value, 0.0..=1.0).text("Value"))
+                        .changed()
+                    {
+                        let grey = (value * 255.0).round().clamp(0.0, 255.0) as u8;
+                        paint.brush.color = Rgba::grey(grey);
                     }
-                });
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.label("Colour");
+                        let mut rgb = paint.brush.color.to_rgb_f32();
+                        if ui.color_edit_button_rgb(&mut rgb).changed() {
+                            paint.brush.color = Rgba::from_rgb_f32(rgb[0], rgb[1], rgb[2]);
+                        }
+                    });
+                }
 
                 // Blend mode
                 egui::ComboBox::from_label("Blend")
@@ -906,7 +936,7 @@ fn editor_ui_system(params: EditorUiParams) {
                 });
                 ui.horizontal(|ui| {
                     if ui.button("Clear layer").clicked() {
-                        if let Some(layer) = paint.document.active_layer_mut() {
+                        if let Some(layer) = paint.active_document_mut().active_layer_mut() {
                             layer.pixels.fill(Rgba::TRANSPARENT);
                         }
                         paint.dirty = true;
@@ -926,22 +956,37 @@ fn editor_ui_system(params: EditorUiParams) {
                 ui.small("Box projection lets you paint the active mesh.");
 
                 ui.separator();
-                ui.label("Layers");
-                let layer_count = paint.document.layers.len();
-                for i in 0..layer_count {
-                    ui.horizontal(|ui| {
-                        let active = paint.document.active == i;
-                        let name = paint.document.layers[i].name.clone();
-                        if ui.selectable_label(active, name).clicked() {
-                            paint.document.active = i;
+                ui.label(format!("Layers - {}", paint.channel.label()));
+                let mut layers_changed = false;
+                {
+                    let document = paint.active_document_mut();
+                    let layer_count = document.layers.len();
+                    for i in 0..layer_count {
+                        ui.horizontal(|ui| {
+                            let active = document.active == i;
+                            let name = document.layers[i].name.clone();
+                            if ui.selectable_label(active, name).clicked() {
+                                document.active = i;
+                            }
+                            let mut visible = document.layers[i].visible;
+                            if ui.checkbox(&mut visible, "eye").changed() {
+                                document.layers[i].visible = visible;
+                                layers_changed = true;
+                            }
+                        });
+                    }
+                    let active_layer = document.active;
+                    if let Some(layer) = document.layers.get_mut(active_layer) {
+                        if ui
+                            .add(
+                                egui::Slider::new(&mut layer.opacity, 0.0..=1.0)
+                                    .text("Layer alpha"),
+                            )
+                            .changed()
+                        {
+                            layers_changed = true;
                         }
-                        let mut visible = paint.document.layers[i].visible;
-                        if ui.checkbox(&mut visible, "eye").changed() {
-                            paint.document.layers[i].visible = visible;
-                            paint.dirty = true;
-                            paint.revision += 1;
-                        }
-                    });
+                    }
                 }
                 ui.horizontal(|ui| {
                     if ui.button("+").on_hover_text("Add layer").clicked() {
@@ -951,38 +996,39 @@ fn editor_ui_system(params: EditorUiParams) {
                         paint.remove_active_layer();
                     }
                     if ui.button("^").on_hover_text("Move up").clicked() {
-                        paint.document.move_active_up();
-                        paint.dirty = true;
-                        paint.revision += 1;
+                        layers_changed =
+                            paint.active_document_mut().move_active_up() || layers_changed;
                     }
                     if ui.button("v").on_hover_text("Move down").clicked() {
-                        paint.document.move_active_down();
-                        paint.dirty = true;
-                        paint.revision += 1;
+                        layers_changed =
+                            paint.active_document_mut().move_active_down() || layers_changed;
                     }
                 });
-                let active_layer = paint.document.active;
-                if let Some(layer) = paint.document.layers.get_mut(active_layer) {
-                    if ui
-                        .add(egui::Slider::new(&mut layer.opacity, 0.0..=1.0).text("Layer alpha"))
-                        .changed()
-                    {
-                        paint.dirty = true;
-                        paint.revision += 1;
-                    }
+                if layers_changed {
+                    paint.dirty = true;
+                    paint.revision += 1;
                 }
 
                 ui.separator();
-                if ui.button("Save PNG").clicked() {
-                    let path = std::path::Path::new("artifacts/polyforge_paint.png");
-                    if let Some(dir) = path.parent() {
-                        let _ = std::fs::create_dir_all(dir);
+                ui.horizontal(|ui| {
+                    if ui.button("Save PNG").clicked() {
+                        let path = std::path::Path::new("artifacts/polyforge_paint.png");
+                        if let Some(dir) = path.parent() {
+                            let _ = std::fs::create_dir_all(dir);
+                        }
+                        match paint.save_png(path) {
+                            Ok(()) => bevy::log::info!("Paint saved -> {}", path.display()),
+                            Err(e) => bevy::log::warn!("Paint save failed: {e}"),
+                        }
                     }
-                    match paint.save_png(path) {
-                        Ok(()) => bevy::log::info!("Paint saved -> {}", path.display()),
-                        Err(e) => bevy::log::warn!("Paint save failed: {e}"),
+                    if ui.button("Export PBR").clicked() {
+                        let dir = std::path::Path::new("artifacts/paint_pbr");
+                        match paint.export_pbr(dir) {
+                            Ok(()) => bevy::log::info!("PBR set -> {}", dir.display()),
+                            Err(e) => bevy::log::warn!("PBR export failed: {e}"),
+                        }
                     }
-                }
+                });
                 ui.separator();
                 if ui.button("Open PhotoCraft…").clicked() {
                     if let Err(e) = launch_photocraft(&artcraft.vendor_root) {

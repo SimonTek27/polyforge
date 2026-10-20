@@ -91,6 +91,66 @@ impl PaintTool {
     }
 }
 
+/// PBR texture channel being painted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PaintChannel {
+    /// Albedo / base colour (sRGB).
+    #[default]
+    BaseColor,
+    /// Roughness (linear, painted as grey).
+    Roughness,
+    /// Metalness (linear, painted as grey).
+    Metalness,
+    /// Tangent-space normal map (linear RGB, 128,128,255 = flat).
+    Normal,
+    /// Emissive colour (sRGB).
+    Emissive,
+}
+
+impl PaintChannel {
+    pub fn label(self) -> &'static str {
+        match self {
+            PaintChannel::BaseColor => "Base",
+            PaintChannel::Roughness => "Rough",
+            PaintChannel::Metalness => "Metal",
+            PaintChannel::Normal => "Normal",
+            PaintChannel::Emissive => "Emit",
+        }
+    }
+
+    pub fn all() -> [PaintChannel; 5] {
+        [
+            PaintChannel::BaseColor,
+            PaintChannel::Roughness,
+            PaintChannel::Metalness,
+            PaintChannel::Normal,
+            PaintChannel::Emissive,
+        ]
+    }
+
+    /// Scalar channels are painted with a greyscale value.
+    pub fn is_scalar(self) -> bool {
+        matches!(self, PaintChannel::Roughness | PaintChannel::Metalness)
+    }
+
+    /// Data channels must not be sRGB-decoded.
+    pub fn is_data(self) -> bool {
+        matches!(
+            self,
+            PaintChannel::Roughness | PaintChannel::Metalness | PaintChannel::Normal
+        )
+    }
+
+    /// Sensible brush colour when switching to this channel.
+    pub fn default_color(self) -> Option<Rgba> {
+        match self {
+            PaintChannel::Roughness | PaintChannel::Metalness => Some(Rgba::grey(128)),
+            PaintChannel::Normal => Some(Rgba::opaque(128, 128, 255)),
+            PaintChannel::BaseColor | PaintChannel::Emissive => None,
+        }
+    }
+}
+
 /// How a layer (or dab) combines with what is underneath.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BlendMode {
@@ -229,6 +289,19 @@ impl PaintDocument {
             layers: vec![PaintLayer::new("Layer 1", width, height)],
             active: 0,
             background: Rgba { r: 24, g: 24, b: 28, a: 255 },
+        }
+    }
+
+    /// A data channel document: one empty layer over a constant background.
+    pub fn data(width: u32, height: u32, background: Rgba) -> Self {
+        let width = width.max(1);
+        let height = height.max(1);
+        Self {
+            width,
+            height,
+            layers: vec![PaintLayer::new("Layer 1", width, height)],
+            active: 0,
+            background,
         }
     }
 

@@ -95,6 +95,32 @@ STL export, Parallel/Coincident, residual solve loop.
 
 ---
 
+## Phase 34 - OCCT / B-rep CAD kernel (mandatory, needs native deps)
+
+Goal: replace the mesh-parametric CAD backend with a real boundary-representation
+kernel via OpenCASCADE (OCCT), behind a feature flag, without breaking the mesh
+fallback.
+
+| Step | Status | Notes |
+|------|--------|-------|
+| 0. Prereqs on build machine | todo | OCCT 7.8+ dev (vcpkg `opencascade` or official installer), MSVC toolchain, `OCCT_ROOT` env, DLLs on `PATH` |
+| 1. `polyforge-occt-sys` shim crate | todo | C++ shim exposing a C ABI (cc + bindgen); no Rust-side OCCT types |
+| 2. Kernel trait wiring | todo | `SolidKernel` already exists (`polyforge-cad/src/kernel.rs`); implement `OcctKernel` under `--features cad_kernel` |
+| 3. Primitives + booleans | todo | BRepPrimAPI (box/cyl/sphere/cone), BRepAlgoAPI cut/fuse; keep mesh fallback |
+| 4. Fillets/chamfers | todo | BRepFilletAPI; replaces `fillet.rs` approximation |
+| 5. Tessellation bridge | todo | BRepMesh_IncrementalMesh -> triangles/positions/normals -> `EditableMesh` |
+| 6. STEP read/write | todo | STEPControl_Reader/Writer replaces `step_export.rs` stub; units + tolerance |
+| 7. UI + CI + licensing | todo | Kernel indicator (`ActiveKernel`), mesh-quality settings; vcpkg CI job; LGPL-2.1 notice in `LICENSE-THIRD-PARTY.md` |
+
+Verification: `cargo build -p polyforge-cad --features cad_kernel`; volume/area
+tests within tolerance; STEP round-trip; boolean volume checks.
+
+Blocked here: this sandbox has no OCCT installed, so steps 1-7 must be developed
+where the native dependency and packaging decisions (static vs dynamic link,
+DLL redistribution) can be validated.
+
+---
+
 ## Backlog that needs external intervention
 
 | Item | Status | Why blocked |
@@ -112,6 +138,9 @@ STL export, Parallel/Coincident, residual solve loop.
 |------|--------|
 | `polyforge-paint` crate: layers, brush engine, PNG I/O, UV projection | done |
 | Paint panel: tools, brush settings, blend mode, layers, save PNG | done |
+| PBR channels: Base / Roughness / Metalness / Normal / Emissive, per-channel layers | done |
+| ORM packing (R=AO, G=roughness, B=metalness) + normal/emissive export | done |
+| Material binding: base color, metallic-roughness, normal map, emissive | done |
 | Live composited canvas preview (egui texture, rebuilt on `revision`) | done |
 | Paint texture bound to active material in Paint mode (restored on exit) | done |
 | "Box project UVs" button so the active mesh is paintable | done |
@@ -129,6 +158,7 @@ STL export, Parallel/Coincident, residual solve loop.
 | **CadMode** | Parametric **mesh** kernel + sketcher + LSQ constraints + assembly UI; B-rep ⏸️ |
 | **VectorMode** | Paths, SVG, Martinez boolean, Bezier G1 |
 | **PaintMode** | Raster layers, brush engine, UV-mapped viewport painting, PNG output |
+| **PaintMode PBR** | Base/Rough/Metal/Normal/Emit channels, ORM + normal export, material binding |
 | **PrintMode** | Mesh slicer, supports, layer preview |
 
 ---

@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 use polyforge_core::{pick_face, ActiveMesh, AppMode, EditableMesh, PickHit, WorkspaceState};
-use polyforge_paint::{projection, PaintState};
+use polyforge_paint::{projection, PaintChannel, PaintState};
 
 /// Result of a mesh pick.
 
@@ -145,29 +145,58 @@ fn barycentric_3d(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<(f32, f32, f32)>
     Some((wa, wb, wc))
 }
 
-/// GPU-side paint texture and the material it was temporarily bound to.
-#[derive(Resource)]
-pub struct PaintTextureBinding {
-    image: Option<Handle<bevy::image::Image>>,
-    revision: u64,
-    bound_material: Option<Handle<StandardMaterial>>,
-    original_texture: Option<Handle<bevy::image::Image>>,
-    original_color: Option<Color>,
+/// Material fields captured before Paint mode overrides them.
+#[derive(Clone)]
+struct MaterialSnapshot {
+    base_color: Color,
+    base_color_texture: Option<Handle<bevy::image::Image>>,
+    metallic_roughness_texture: Option<Handle<bevy::image::Image>>,
+    normal_map_texture: Option<Handle<bevy::image::Image>>,
+    emissive: LinearRgba,
+    emissive_texture: Option<Handle<bevy::image::Image>>,
 }
 
-impl Default for PaintTextureBinding {
-    fn default() -> Self {
-        Self {
-            image: None,
-            revision: u64::MAX,
-            bound_material: None,
-            original_texture: None,
-            original_color: None,
+/// GPU-side PBR texture set and the material it was temporarily bound to.
+#[derive(Resource, Default)]
+pub struct PaintTextureBinding {
+    /// Base colour, ORM, normal and emissive images.
+    images: [Option<Handle<bevy::image::Image>>; 4],
+    revision: u64,
+    bound_material: Option<Handle<StandardMaterial>>,
+    original: Option<MaterialSnapshot>,
+}
+
+fn upsert(
+    images: &mut Assets<bevy::image::Image>,
+    slot: &mut Option<Handle<bevy::image::Image>>,
+    image: bevy::image::Image,
+) {
+    match slot {
+        Some(handle) => {
+            images.insert(handle, image);
+        }
+        None => {
+            *slot = Some(images.add(image));
         }
     }
 }
 
-/// Bind the composited paint canvas to the active mesh material while in Paint
+fn restore_material(
+    materials: &mut Assets<StandardMaterial>,
+    handle: &Handle<StandardMaterial>,
+    snapshot: &MaterialSnapshot,
+) {
+    if let Some(mut material) = materials.get_mut(handle) {
+        material.base_color = snapshot.base_color;
+        material.base_color_texture = snapshot.base_color_texture.clone();
+        material.metallic_roughness_texture = snapshot.metallic_roughness_texture.clone();
+        material.normal_map_texture = snapshot.normal_map_texture.clone();
+        material.emissive = snapshot.emissive;
+        material.emissive_texture = snapshot.emissive_texture.clone();
+    }
+}
+
+/// Bind the composited PBR channels to the active mesh material while in Paint
 /// mode, re-uploading only when `PaintState::revision` changes.
 pub fn paint_texture_system(
     workspace: Res<WorkspaceState>,
@@ -179,13 +208,9 @@ pub fn paint_texture_system(
 ) {
     if workspace.mode != AppMode::Paint {
         if let Some(mat_handle) = binding.bound_material.take() {
-            if let Some(mut material) = materials.get_mut(&mat_handle) {
-                material.base_color_texture = binding.original_texture.take();
-                if let Some(color) = binding.original_color.take() {
-                    material.base_color = color;
-                }
+            if let Some(snapshot) = binding.original.take() {
+                restore_material(&mut materials, &mat_handle, &snapshot);
             }
-            binding.image = None;
             binding.revision = u64::MAX;
         }
         return;
@@ -198,39 +223,50 @@ pub fn paint_texture_system(
 
     if binding.bound_material.as_ref() != Some(&material_handle) {
         if let Some(previous) = binding.bound_material.take() {
-            if let Some(mut material) = materials.get_mut(&previous) {
-                material.base_color_texture = binding.original_texture.take();
-                if let Some(color) = binding.original_color.take() {
-                    material.base_color = color;
-                }
+            if let Some(snapshot) = binding.original.take() {
+                restore_material(&mut materials, &previous, &snapshot);
             }
         }
-        if let Some(mut material) = materials.get_mut(&material_handle) {
-            binding.original_texture = material.base_color_texture.clone();
-            binding.original_color = Some(material.base_color);
+        if let Some(material) = materials.get_mut(&material_handle) {
+            binding.original = Some(MaterialSnapshot {
+                base_color: material.base_color,
+                base_color_texture: material.base_color_texture.clone(),
+                metallic_roughness_texture: material.metallic_roughness_texture.clone(),
+                normal_map_texture: material.normal_map_texture.clone(),
+                emissive: material.emissive,
+                emissive_texture: material.emissive_texture.clone(),
+            });
         }
         binding.bound_material = Some(material_handle.clone());
         binding.revision = u64::MAX;
     }
 
-    if binding.revision != paint.revision || binding.image.is_none() {
-        let image = paint.document.composite().to_bevy_image();
-        match binding.image.clone() {
-            Some(handle) => {
-                images.insert(&handle, image);
-            }
-            None => {
-                binding.image = Some(images.add(image));
-            }
-        }
+    if binding.revision != paint.revision || binding.images[0].is_none() {
+        let base = paint
+            .composite_channel(PaintChannel::BaseColor)
+            .to_bevy_image();
+        let orm = paint.export_orm().to_bevy_image_linear();
+        let normal = paint
+            .normal
+            .composite()
+            .to_bevy_image_linear();
+        let emissive = paint.emissive.composite().to_bevy_image();
+
+        let [base_slot, orm_slot, normal_slot, emissive_slot] = &mut binding.images;
+        upsert(&mut images, base_slot, base);
+        upsert(&mut images, orm_slot, orm);
+        upsert(&mut images, normal_slot, normal);
+        upsert(&mut images, emissive_slot, emissive);
         binding.revision = paint.revision;
     }
 
-    if let (Some(image), Some(mut material)) =
-        (binding.image.clone(), materials.get_mut(&material_handle))
-    {
-        material.base_color_texture = Some(image);
+    if let Some(mut material) = materials.get_mut(&material_handle) {
+        material.base_color_texture = binding.images[0].clone();
+        material.metallic_roughness_texture = binding.images[1].clone();
+        material.normal_map_texture = binding.images[2].clone();
+        material.emissive_texture = binding.images[3].clone();
         material.base_color = Color::WHITE;
+        material.emissive = LinearRgba::WHITE;
     }
 }
 
