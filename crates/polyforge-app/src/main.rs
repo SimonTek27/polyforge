@@ -29,6 +29,7 @@ mod selection_sys;
 mod scene_ops;
 mod hotkeys;
 mod print_panel;
+mod paint_sys;
 
 use object_mode::object_mode_transform_system;
 use material_gpu::sync_materials_to_gpu;
@@ -39,6 +40,7 @@ use camera::{OrbitCamera, orbit_camera_system};
 use gizmo_sys::{update_gizmo_origin, gizmo_interaction_system, draw_gizmo_system};
 use hotkeys::hotkey_system;
 use print_panel::{print_panel_system, print_preview_system, PrintUiState};
+use paint_sys::paint_stroke_system;
 use scene_ops::{
     cycle_active_object_system, separate_object_system, join_active_objects_system,
     mirror_modifier_system, array_modifier_hotkeys, collection_visibility_system,
@@ -127,6 +129,7 @@ fn main() {
                 vector_io_system,
                 scene_hotkeys,
                 print_preview_system,
+                paint_stroke_system,
                 auto_save_system,
             ),
         )

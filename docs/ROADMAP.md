@@ -106,6 +106,18 @@ STL export, Parallel/Coincident, residual solve loop.
 
 ---
 
+## Phase 33 - PaintMode + ArtCraft bridge | done (vendor sync pending)
+
+| Item | Status |
+|------|--------|
+| `polyforge-paint` crate: layers, brush engine, PNG I/O, UV projection | done |
+| Paint panel: tools, brush settings, blend mode, layers, save PNG | done |
+| Viewport raycast -> hit face -> barycentric UV -> stroke stamping | done |
+| `polyforge-bridge`: VectorCraft / PhotoCraft launch + vendor pin check | done |
+| Vendor trees populated | todo (`./scripts/sync_artcraft.sh` with network) |
+
+---
+
 ## Mode map
 
 | Mode | State |
@@ -113,6 +125,8 @@ STL export, Parallel/Coincident, residual solve loop.
 | **PolyMode** | Mesh tools production-oriented |
 | **CadMode** | Parametric **mesh** kernel + sketcher + LSQ constraints + assembly UI; B-rep ⏸️ |
 | **VectorMode** | Paths, SVG, Martinez boolean, Bezier G1 |
+| **PaintMode** | Raster layers, brush engine, UV-mapped viewport painting, PNG output |
+| **PrintMode** | Mesh slicer, supports, layer preview |
 
 ---
 

@@ -12,6 +12,7 @@ use polyforge_cad::{ActiveKernel, AssemblyMate, MateKind, sort_by_hierarchy,
 };
 use polyforge_vector::{VectorPath, VectorWorkspace, union_paths, intersect_paths, difference_paths};
 use polyforge_bridge::{ArtCraftIntegration, launch_vectorcraft, launch_photocraft};
+use polyforge_paint::{BlendMode as PaintBlendMode, PaintState, PaintTool, Rgba};
 use polyforge_core::{
     ActiveMesh, EditableMesh, EditableObject, EditorState, GizmoMode, GizmoState, I18n, Locale,
     MarqueeState, Msg, ObjectName, Selection, SelectionMode, Tool, CommandRegistry,
@@ -194,6 +195,7 @@ struct EditorUiParams<'w, 's> {
     artcraft: Res<'w, ArtCraftIntegration>,
     mates_q: Query<'w, 's, (Entity, &'static mut AssemblyMate)>,
     names_q: Query<'w, 's, &'static polyforge_core::ObjectName>,
+    paint: ResMut<'w, PaintState>,
 }
 
 fn editor_ui_system(params: EditorUiParams) {
@@ -217,6 +219,7 @@ fn editor_ui_system(params: EditorUiParams) {
         artcraft,
         mut mates_q,
         names_q,
+        mut paint,
     } = params;
 
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -815,8 +818,121 @@ fn editor_ui_system(params: EditorUiParams) {
                 ui.heading("Paint");
                 ui.small("PhotoCraft companion");
                 ui.separator();
-                ui.label("Texture / raster tools");
-                ui.small("Brush size, opacity and layers will land here.");
+
+                // Tools
+                ui.horizontal_wrapped(|ui| {
+                    for tool in PaintTool::all() {
+                        if ui
+                            .selectable_label(paint.tool == tool, tool.label())
+                            .clicked()
+                        {
+                            paint.tool = tool;
+                        }
+                    }
+                });
+
+                ui.separator();
+                ui.label("Brush");
+                ui.add(egui::Slider::new(&mut paint.brush.size, 1.0..=256.0).text("Size"));
+                ui.add(egui::Slider::new(&mut paint.brush.opacity, 0.0..=1.0).text("Opacity"));
+                ui.add(egui::Slider::new(&mut paint.brush.flow, 0.0..=1.0).text("Flow"));
+                ui.add(egui::Slider::new(&mut paint.brush.hardness, 0.0..=1.0).text("Hardness"));
+                ui.add(egui::Slider::new(&mut paint.brush.spacing, 0.05..=1.0).text("Spacing"));
+
+                // Colour
+                ui.horizontal(|ui| {
+                    ui.label("Colour");
+                    let mut rgb = paint.brush.color.to_rgb_f32();
+                    if ui.color_edit_button_rgb(&mut rgb).changed() {
+                        paint.brush.color = Rgba::from_rgb_f32(rgb[0], rgb[1], rgb[2]);
+                    }
+                });
+
+                // Blend mode
+                egui::ComboBox::from_label("Blend")
+                    .selected_text(paint.blend.label())
+                    .show_ui(ui, |ui| {
+                        for blend in [
+                            PaintBlendMode::Normal,
+                            PaintBlendMode::Multiply,
+                            PaintBlendMode::Add,
+                            PaintBlendMode::Screen,
+                        ] {
+                            ui.selectable_value(&mut paint.blend, blend, blend.label());
+                        }
+                    });
+
+                ui.separator();
+                ui.label(format!(
+                    "Canvas {}x{}",
+                    paint.document.width, paint.document.height
+                ));
+                ui.horizontal(|ui| {
+                    if ui.button("512").clicked() {
+                        paint.reset(512, 512);
+                    }
+                    if ui.button("1024").clicked() {
+                        paint.reset(1024, 1024);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Clear layer").clicked() {
+                        if let Some(layer) = paint.document.active_layer_mut() {
+                            layer.pixels.fill(Rgba::TRANSPARENT);
+                        }
+                        paint.dirty = true;
+                    }
+                    if ui.button("Fill").clicked() {
+                        paint.fill_active();
+                    }
+                });
+
+                ui.separator();
+                ui.label("Layers");
+                let layer_count = paint.document.layers.len();
+                for i in 0..layer_count {
+                    ui.horizontal(|ui| {
+                        let active = paint.document.active == i;
+                        let name = paint.document.layers[i].name.clone();
+                        if ui.selectable_label(active, name).clicked() {
+                            paint.document.active = i;
+                        }
+                        let mut visible = paint.document.layers[i].visible;
+                        if ui.checkbox(&mut visible, "eye").changed() {
+                            paint.document.layers[i].visible = visible;
+                        }
+                    });
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("+").on_hover_text("Add layer").clicked() {
+                        paint.add_layer();
+                    }
+                    if ui.button("-").on_hover_text("Delete layer").clicked() {
+                        paint.remove_active_layer();
+                    }
+                    if ui.button("^").on_hover_text("Move up").clicked() {
+                        paint.document.move_active_up();
+                    }
+                    if ui.button("v").on_hover_text("Move down").clicked() {
+                        paint.document.move_active_down();
+                    }
+                });
+                let active_layer = paint.document.active;
+                if let Some(layer) = paint.document.layers.get_mut(active_layer) {
+                    ui.add(egui::Slider::new(&mut layer.opacity, 0.0..=1.0).text("Layer alpha"));
+                }
+
+                ui.separator();
+                if ui.button("Save PNG").clicked() {
+                    let path = std::path::Path::new("artifacts/polyforge_paint.png");
+                    if let Some(dir) = path.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    match paint.save_png(path) {
+                        Ok(()) => bevy::log::info!("Paint saved -> {}", path.display()),
+                        Err(e) => bevy::log::warn!("Paint save failed: {e}"),
+                    }
+                }
                 ui.separator();
                 if ui.button("Open PhotoCraft…").clicked() {
                     if let Err(e) = launch_photocraft(&artcraft.vendor_root) {
