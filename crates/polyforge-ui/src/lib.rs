@@ -13,8 +13,9 @@ use polyforge_cad::{ActiveKernel, AssemblyMate, MateKind, sort_by_hierarchy,
 use polyforge_vector::{VectorPath, VectorWorkspace, union_paths, intersect_paths, difference_paths};
 use polyforge_bridge::{ArtCraftIntegration, launch_vectorcraft, launch_photocraft};
 use polyforge_paint::{
-    BlendMode as PaintBlendMode, PaintChannel, PaintState, PaintTool, Rgba,
+    BlendMode as PaintBlendMode, PaintBrushPattern, PaintChannel, PaintState, PaintTool, Rgba,
 };
+use polyforge_io::{write_gltf_textured_file, GltfTextures};
 use polyforge_core::{
     ActiveMesh, EditableMesh, EditableObject, EditorState, GizmoMode, GizmoState, I18n, Locale,
     MarqueeState, Msg, ObjectName, Selection, SelectionMode, Tool, CommandRegistry,
@@ -879,6 +880,60 @@ fn editor_ui_system(params: EditorUiParams) {
                     }
                 });
 
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(paint.can_undo(), egui::Button::new("Undo"))
+                        .clicked()
+                    {
+                        paint.undo();
+                    }
+                    if ui
+                        .add_enabled(paint.can_redo(), egui::Button::new("Redo"))
+                        .clicked()
+                    {
+                        paint.redo();
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut paint.symmetry_x, "Sym X");
+                    ui.checkbox(&mut paint.symmetry_y, "Sym Y");
+                });
+                ui.add(
+                    egui::Slider::new(&mut paint.fill_tolerance, 0.0..=1.0).text("Fill tol"),
+                );
+                ui.small("Alt+click picks the colour (Clone: sets source).");
+
+                ui.separator();
+                ui.label("Mask");
+                ui.checkbox(&mut paint.mask_paint, "Paint mask");
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Add")
+                        .on_hover_text("Create a mask on the active layer")
+                        .clicked()
+                    {
+                        paint.begin_edit();
+                        paint.ensure_active_mask();
+                    }
+                    if ui
+                        .button("Fill")
+                        .on_hover_text("Reveal the whole layer")
+                        .clicked()
+                    {
+                        paint.begin_edit();
+                        paint.fill_active_mask(255);
+                    }
+                    if ui
+                        .button("Clear")
+                        .on_hover_text("Remove the mask")
+                        .clicked()
+                    {
+                        paint.begin_edit();
+                        paint.clear_active_mask();
+                    }
+                });
+
                 ui.separator();
                 ui.label("Brush");
                 ui.add(egui::Slider::new(&mut paint.brush.size, 1.0..=256.0).text("Size"));
@@ -886,6 +941,20 @@ fn editor_ui_system(params: EditorUiParams) {
                 ui.add(egui::Slider::new(&mut paint.brush.flow, 0.0..=1.0).text("Flow"));
                 ui.add(egui::Slider::new(&mut paint.brush.hardness, 0.0..=1.0).text("Hardness"));
                 ui.add(egui::Slider::new(&mut paint.brush.spacing, 0.05..=1.0).text("Spacing"));
+                ui.horizontal(|ui| {
+                    ui.label("Shape");
+                    egui::ComboBox::from_id_salt("brush_pattern")
+                        .selected_text(paint.brush.pattern.label())
+                        .show_ui(ui, |ui| {
+                            for pattern in PaintBrushPattern::all() {
+                                ui.selectable_value(
+                                    &mut paint.brush.pattern,
+                                    pattern,
+                                    pattern.label(),
+                                );
+                            }
+                        });
+                });
 
                 // Colour / channel value
                 if paint.channel.is_scalar() {
@@ -936,13 +1005,15 @@ fn editor_ui_system(params: EditorUiParams) {
                 });
                 ui.horizontal(|ui| {
                     if ui.button("Clear layer").clicked() {
+                        paint.begin_edit();
                         if let Some(layer) = paint.active_document_mut().active_layer_mut() {
                             layer.pixels.fill(Rgba::TRANSPARENT);
                         }
                         paint.dirty = true;
                         paint.revision += 1;
                     }
-                    if ui.button("Fill").clicked() {
+                    if ui.button("Fill layer").clicked() {
+                        paint.begin_edit();
                         paint.fill_active();
                     }
                 });
@@ -957,57 +1028,108 @@ fn editor_ui_system(params: EditorUiParams) {
 
                 ui.separator();
                 ui.label(format!("Layers - {}", paint.channel.label()));
-                let mut layers_changed = false;
-                {
-                    let document = paint.active_document_mut();
-                    let layer_count = document.layers.len();
-                    for i in 0..layer_count {
-                        ui.horizontal(|ui| {
-                            let active = document.active == i;
-                            let name = document.layers[i].name.clone();
-                            if ui.selectable_label(active, name).clicked() {
-                                document.active = i;
-                            }
-                            let mut visible = document.layers[i].visible;
-                            if ui.checkbox(&mut visible, "eye").changed() {
-                                document.layers[i].visible = visible;
-                                layers_changed = true;
-                            }
-                        });
-                    }
-                    let active_layer = document.active;
-                    if let Some(layer) = document.layers.get_mut(active_layer) {
-                        if ui
-                            .add(
-                                egui::Slider::new(&mut layer.opacity, 0.0..=1.0)
-                                    .text("Layer alpha"),
-                            )
-                            .changed()
-                        {
-                            layers_changed = true;
+                let layer_count = paint.active_document().layers.len();
+                let mut activate_layer: Option<usize> = None;
+                let mut toggle_layer: Option<(usize, bool)> = None;
+                for i in 0..layer_count {
+                    let (active, name, visible) = {
+                        let document = paint.active_document();
+                        let layer = &document.layers[i];
+                        (document.active == i, layer.name.clone(), layer.visible)
+                    };
+                    ui.horizontal(|ui| {
+                        if ui.selectable_label(active, name).clicked() {
+                            activate_layer = Some(i);
                         }
+                        let mut vis = visible;
+                        if ui.checkbox(&mut vis, "eye").changed() {
+                            toggle_layer = Some((i, vis));
+                        }
+                    });
+                }
+                if let Some(index) = activate_layer {
+                    paint.active_document_mut().active = index;
+                    paint.revision += 1;
+                }
+                if let Some((index, visible)) = toggle_layer {
+                    paint.set_layer_visible(index, visible);
+                }
+
+                let active_layer = paint.active_document().active_layer().map(|layer| {
+                    (layer.name.clone(), layer.opacity, layer.blend)
+                });
+                if let Some((current_name, current_opacity, current_blend)) = active_layer {
+                    let mut name = current_name.clone();
+                    ui.horizontal(|ui| {
+                        ui.label("Name");
+                        let response = ui.add(
+                            egui::TextEdit::singleline(&mut name).desired_width(120.0),
+                        );
+                        if response.lost_focus() && name != current_name {
+                            paint.rename_active_layer(name.clone());
+                        }
+                    });
+
+                    let mut blend = current_blend;
+                    ui.horizontal(|ui| {
+                        ui.label("Blend");
+                        egui::ComboBox::from_id_salt("layer_blend")
+                            .selected_text(blend.label())
+                            .show_ui(ui, |ui| {
+                                for candidate in [
+                                    PaintBlendMode::Normal,
+                                    PaintBlendMode::Multiply,
+                                    PaintBlendMode::Add,
+                                    PaintBlendMode::Screen,
+                                ] {
+                                    ui.selectable_value(&mut blend, candidate, candidate.label());
+                                }
+                            });
+                    });
+                    if blend != current_blend {
+                        paint.set_active_layer_blend(blend);
+                    }
+
+                    let mut opacity = current_opacity;
+                    let response = ui.add(
+                        egui::Slider::new(&mut opacity, 0.0..=1.0).text("Layer alpha"),
+                    );
+                    if response.drag_started() {
+                        paint.begin_edit();
+                    }
+                    if response.changed() {
+                        if let Some(layer) = paint.active_document_mut().active_layer_mut() {
+                            layer.opacity = opacity;
+                        }
+                        paint.dirty = true;
+                        paint.revision += 1;
                     }
                 }
+
                 ui.horizontal(|ui| {
                     if ui.button("+").on_hover_text("Add layer").clicked() {
                         paint.add_layer();
                     }
                     if ui.button("-").on_hover_text("Delete layer").clicked() {
+                        paint.begin_edit();
                         paint.remove_active_layer();
                     }
+                    if ui.button("Dup").on_hover_text("Duplicate layer").clicked() {
+                        paint.duplicate_active_layer();
+                    }
+                    if ui.button("Merge").on_hover_text("Merge layer down").clicked() {
+                        paint.merge_active_layer_down();
+                    }
+                    if ui.button("Flat").on_hover_text("Flatten visible layers").clicked() {
+                        paint.flatten_layers();
+                    }
                     if ui.button("^").on_hover_text("Move up").clicked() {
-                        layers_changed =
-                            paint.active_document_mut().move_active_up() || layers_changed;
+                        paint.move_active_layer_up();
                     }
                     if ui.button("v").on_hover_text("Move down").clicked() {
-                        layers_changed =
-                            paint.active_document_mut().move_active_down() || layers_changed;
+                        paint.move_active_layer_down();
                     }
                 });
-                if layers_changed {
-                    paint.dirty = true;
-                    paint.revision += 1;
-                }
 
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -1026,6 +1148,54 @@ fn editor_ui_system(params: EditorUiParams) {
                         match paint.export_pbr(dir) {
                             Ok(()) => bevy::log::info!("PBR set -> {}", dir.display()),
                             Err(e) => bevy::log::warn!("PBR export failed: {e}"),
+                        }
+                    }
+                    if ui.button("Export glTF").clicked() {
+                        let base_color = paint.document.composite().to_png();
+                        let orm = paint.export_orm().to_png();
+                        let normal = paint.normal.composite().to_png();
+                        let emissive = paint.emissive.composite().to_png();
+                        let textures = GltfTextures {
+                            base_color: Some(&base_color),
+                            metallic_roughness: Some(&orm),
+                            normal: Some(&normal),
+                            emissive: Some(&emissive),
+                        };
+                        let dir = std::path::Path::new("artifacts/paint_pbr");
+                        let _ = std::fs::create_dir_all(dir);
+                        let path = dir.join("model.gltf");
+                        match selection_q.single_mut() {
+                            Ok((mesh, _selection)) => {
+                                match write_gltf_textured_file(&mesh, &textures, &path) {
+                                    Ok(()) => {
+                                        bevy::log::info!("glTF -> {}", path.display())
+                                    }
+                                    Err(e) => bevy::log::warn!("glTF export failed: {e}"),
+                                }
+                            }
+                            Err(_) => bevy::log::warn!("glTF export: no active mesh"),
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Save .pfp").clicked() {
+                        let path = std::path::Path::new("artifacts/paint_project.pfp");
+                        if let Some(dir) = path.parent() {
+                            let _ = std::fs::create_dir_all(dir);
+                        }
+                        match paint.save_project(path) {
+                            Ok(()) => bevy::log::info!("Project saved -> {}", path.display()),
+                            Err(e) => bevy::log::warn!("Project save failed: {e}"),
+                        }
+                    }
+                    if ui.button("Load .pfp").clicked() {
+                        let path = std::path::Path::new("artifacts/paint_project.pfp");
+                        match PaintState::load_project(path) {
+                            Ok(loaded) => {
+                                *paint = loaded;
+                                *preview_tex = None;
+                            }
+                            Err(e) => bevy::log::warn!("Project load failed: {e:?}"),
                         }
                     }
                 });

@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 use polyforge_core::{pick_face, ActiveMesh, AppMode, EditableMesh, PickHit, WorkspaceState};
-use polyforge_paint::{projection, PaintChannel, PaintState};
+use polyforge_paint::{projection, PaintChannel, PaintState, PaintTool};
 
 /// Result of a mesh pick.
 
@@ -21,6 +21,7 @@ pub struct PaintStroke {
 pub fn paint_stroke_system(
     mut contexts: EguiContexts,
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     workspace: Res<WorkspaceState>,
     windows: Query<&Window>,
     camera_q: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
@@ -89,13 +90,92 @@ pub fn paint_stroke_system(
 
     let (px, py) = projection::uv_to_pixel(u, v, paint.document.width, paint.document.height);
 
-    if let Some(last) = stroke.last {
-        paint.stroke(last, (px, py));
-    } else {
-        paint.stamp(px, py);
+    let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    if alt {
+        let x = px.clamp(0.0, paint.document.width as f32 - 1.0) as u32;
+        let y = py.clamp(0.0, paint.document.height as f32 - 1.0) as u32;
+        if paint.tool == PaintTool::Clone {
+            paint.clone_source = Some((x as f32, y as f32));
+        } else {
+            paint.pick_color(x, y);
+        }
+        stroke.last = None;
+        stroke.painting = false;
+        return;
+    }
+
+    if paint.tool == PaintTool::Clone {
+        if let Some(source) = paint.clone_source.take() {
+            paint.clone_offset = (source.0 - px, source.1 - py);
+        }
+    }
+
+    if paint.tool == PaintTool::Fill {
+        if !stroke.painting {
+            let x = px.clamp(0.0, paint.document.width as f32 - 1.0) as u32;
+            let y = py.clamp(0.0, paint.document.height as f32 - 1.0) as u32;
+            paint.fill_region(x, y);
+        }
+        stroke.last = Some((px, py));
+        stroke.painting = true;
+        return;
+    }
+
+    match stroke.last {
+        Some(last) => paint.stroke(last, (px, py)),
+        None => {
+            paint.begin_edit();
+            paint.stamp(px, py);
+        }
     }
     stroke.last = Some((px, py));
     stroke.painting = true;
+}
+
+/// Undo/redo hotkeys for Paint mode (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y).
+pub fn paint_history_system(
+    mut contexts: EguiContexts,
+    keys: Res<ButtonInput<KeyCode>>,
+    workspace: Res<WorkspaceState>,
+    mut paint: ResMut<PaintState>,
+) {
+    if workspace.mode != AppMode::Paint {
+        return;
+    }
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    if ctx.egui_wants_keyboard_input() {
+        return;
+    }
+    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    if ctrl {
+        let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+        if keys.just_pressed(KeyCode::KeyZ) {
+            if shift {
+                paint.redo();
+            } else {
+                paint.undo();
+            }
+        } else if keys.just_pressed(KeyCode::KeyY) {
+            paint.redo();
+        }
+        return;
+    }
+
+    if keys.just_pressed(KeyCode::KeyB) {
+        paint.tool = PaintTool::Brush;
+    } else if keys.just_pressed(KeyCode::KeyE) {
+        paint.tool = PaintTool::Eraser;
+    } else if keys.just_pressed(KeyCode::KeyC) {
+        paint.tool = PaintTool::Clone;
+    } else if keys.just_pressed(KeyCode::KeyF) {
+        paint.tool = PaintTool::Fill;
+    } else if keys.just_pressed(KeyCode::BracketLeft) {
+        paint.brush.size = (paint.brush.size * 0.85).max(1.0);
+    } else if keys.just_pressed(KeyCode::BracketRight) {
+        paint.brush.size = (paint.brush.size * 1.15).min(512.0);
+    }
 }
 
 /// Interpolate the UV at `point` (mesh-local) across a face's triangle fan.

@@ -1,7 +1,7 @@
 //! Brush stamping: coverage accumulation, erase and clone.
 
 use crate::raster::RasterImage;
-use crate::types::{BlendMode, BrushSettings, PaintTool};
+use crate::types::{BlendMode, BrushSettings, PaintBrushPattern, PaintTool};
 
 /// Live state for a single continuous stroke.
 ///
@@ -68,7 +68,13 @@ impl<'a> StrokeSession<'a> {
                 }
                 let px = x as f32 + 0.5;
                 let py = y as f32 + 0.5;
-                let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt() / radius;
+                let dx = (px - cx).abs() / radius;
+                let dy = (py - cy).abs() / radius;
+                let dist = match self.brush.pattern {
+                    PaintBrushPattern::Circle => (dx * dx + dy * dy).sqrt(),
+                    PaintBrushPattern::Square => dx.max(dy),
+                    PaintBrushPattern::Diamond => dx + dy,
+                };
                 let cov = self.brush.falloff(dist);
                 if cov <= 0.0 {
                     continue;

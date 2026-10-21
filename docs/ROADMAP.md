@@ -148,6 +148,17 @@ DLL redistribution) can be validated.
 | Paint texture bound to active material in Paint mode (restored on exit) | done |
 | "Box project UVs" button so the active mesh is paintable | done |
 | Viewport raycast -> hit face -> barycentric UV -> stroke stamping | done |
+| Layer masks: per-layer mask, mask-paint mode, add/fill/clear + compositing | done |
+| Layer stack ops: duplicate, rename, visibility, opacity, blend, reorder — undoable | done |
+| Layer merge down (bakes opacity/blend/mask) + flatten, undoable | done |
+| Brush shapes (circle / square / diamond) with soft falloff, persisted in `.pfp` | done |
+| Clone tool: Alt+click source picking (offset from first dab) | done |
+| Undo/redo: bounded history, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, dedupe on drags | done |
+| Flood fill tool with colour tolerance, fill-region API | done |
+| X/Y symmetry painting (mirrored dabs and segments) | done |
+| Alt+click colour picker sampling the composited channel | done |
+| Project persistence `.pfp` (encode/decode/save/load, all channels + masks) | done |
+| glTF 2.0 PBR export with embedded base/ORM/normal/emissive maps | done |
 | `polyforge-bridge`: VectorCraft / PhotoCraft launch + vendor pin check | done |
 | Vendor trees populated | todo (`./scripts/sync_artcraft.sh` with network) |
 
@@ -160,10 +171,10 @@ DLL redistribution) can be validated.
 | **PolyMode** | Mesh tools production-oriented |
 | **CadMode** | Parametric **mesh** kernel + sketcher + LSQ constraints + assembly UI; B-rep ⏸️ |
 | **VectorMode** | Paths, SVG, Martinez boolean, Bezier G1 |
-| **PaintMode** | Raster layers, brush engine, UV-mapped viewport painting, PNG output |
-| **PaintMode PBR** | Base/Rough/Metal/Normal/Emit channels, ORM + normal export, material binding |
+| **PaintMode** | Raster layers, brush engine, UV-mapped viewport painting, masks, undo, flood fill, symmetry, PNG output |
+| **PaintMode PBR** | Base/Rough/Metal/Normal/Emit channels, ORM + normal + glTF export, material binding, `.pfp` projects |
 | **PrintMode** | Mesh slicer, supports, layer preview |
 
 ---
 
-*Last updated: UI pass — Blender / CadCraft / VectorCraft chrome* — 2026-10-18 — remaining work is OCCT (deferred) or external (git credentials / future Bevy)*
+*Last updated: Paint Phase 33 — masks, undo/redo, flood fill, symmetry, picker, `.pfp` persistence, glTF PBR export* — 2026-10-21 — remaining work needs OCCT installed (native validation) or is external (git credentials / future Bevy)*

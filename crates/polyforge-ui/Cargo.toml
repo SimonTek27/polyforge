@@ -16,3 +16,4 @@ polyforge-cad = { workspace = true }
 polyforge-vector = { workspace = true }
 polyforge-bridge = { workspace = true }
 polyforge-paint = { workspace = true }
+polyforge-io = { workspace = true }

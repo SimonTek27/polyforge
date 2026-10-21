@@ -40,7 +40,7 @@ use camera::{OrbitCamera, orbit_camera_system};
 use gizmo_sys::{update_gizmo_origin, gizmo_interaction_system, draw_gizmo_system};
 use hotkeys::hotkey_system;
 use print_panel::{print_panel_system, print_preview_system, PrintUiState};
-use paint_sys::{paint_stroke_system, paint_texture_system, PaintTextureBinding};
+use paint_sys::{paint_history_system, paint_stroke_system, paint_texture_system, PaintTextureBinding};
 use scene_ops::{
     cycle_active_object_system, separate_object_system, join_active_objects_system,
     mirror_modifier_system, array_modifier_hotkeys, collection_visibility_system,
@@ -135,7 +135,12 @@ fn main() {
         )
         .add_systems(
             Update,
-            (paint_stroke_system, paint_texture_system).chain(),
+            (
+                paint_history_system,
+                paint_stroke_system,
+                paint_texture_system,
+            )
+                .chain(),
         )
         .run();
 }

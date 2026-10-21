@@ -37,7 +37,7 @@ This is the initial working scaffold. It already includes:
 - Primitives: cube, plane, cylinder, UV sphere
 - Bevy 3D viewport with orbit camera and a default cube
 - **i18n** with English locale (extensible catalogs)
-- **Paint mode**: PBR channels (base / roughness / metalness / normal / emissive), layer stack (duplicate, rename, opacity, blend mode, per-layer greyscale masks), flood-fill tool with tolerance, X/Y symmetry, `Alt`+click colour picker, undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`), ORM + PNG + textured glTF export, UV-mapped viewport painting
+- **Paint mode**: PBR channels (base / roughness / metalness / normal / emissive), layer stack (duplicate, rename, opacity, blend mode, per-layer greyscale masks), brush shapes (circle / square / diamond), flood-fill tool with tolerance, X/Y symmetry, `Alt`+click colour picker, undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`), `.pfp` project save/load, ORM + PNG + textured glTF export, UV-mapped viewport painting
 - **CAD mode**: parametric feature stack with mesh kernel; optional OCCT B-rep kernel behind `cad_kernel` (Pad/Pocket/Fillet, STEP I/O, kernel + quality controls) — see `docs/BUILD_OCCT.md`
 - GPL-3.0 license
 
@@ -82,7 +82,10 @@ This is the initial working scaffold. It already includes:
 | Toggle UV seam      | `Ctrl+E`                       |
 | Save / Load project | `Ctrl+S` / `Ctrl+O`            |
 | Paint: undo / redo  | `Ctrl+Z` / `Ctrl+Shift+Z`      |
+| Paint: tools        | `B` brush / `E` erase / `C` clone / `F` fill |
+| Paint: brush size   | `[` smaller / `]` larger       |
 | Paint: pick colour  | `Alt` + click (Paint mode)     |
+| Paint: clone source | `Alt` + click with Clone tool  |
 | Paint: flood fill   | Fill tool + click              |
 | Add plane           | `Shift+A`                      |
 | Add torus           | `Shift+T`                      |

@@ -19,15 +19,22 @@
 //! ```
 
 pub mod brush;
+pub mod flood;
+pub mod history;
 pub mod png;
 pub mod projection;
 pub mod raster;
+pub mod save;
 pub mod types;
 
-pub use brush::{fill_all, StrokeSession};
+pub use brush::{fill_all, MaskSession, StrokeSession};
+pub use flood::{color_distance, flood_fill};
+pub use history::{PaintHistory, PaintSnapshot};
 pub use raster::RasterImage;
+pub use save::{PaintSaveError, decode as decode_project, encode as encode_project};
 pub use types::{
-    BlendMode, BrushSettings, PaintChannel, PaintDocument, PaintLayer, PaintTool, Rgba,
+    BlendMode, BrushSettings, PaintBrushPattern, PaintChannel, PaintDocument, PaintLayer, PaintTool,
+    Rgba,
 };
 
 use bevy::prelude::*;
@@ -48,6 +55,18 @@ pub struct PaintState {
     pub blend: BlendMode,
     /// Offset (dx, dy) from destination to clone-source pixel.
     pub clone_offset: (f32, f32),
+    /// Pending clone source picked with Alt+click; consumed on the next dab.
+    pub clone_source: Option<(f32, f32)>,
+    /// When true, brush strokes paint the active layer mask instead of pixels.
+    pub mask_paint: bool,
+    /// Mirror dabs horizontally around the canvas centre.
+    pub symmetry_x: bool,
+    /// Mirror dabs vertically around the canvas centre.
+    pub symmetry_y: bool,
+    /// Fill-tool colour tolerance (`0..=1`).
+    pub fill_tolerance: f32,
+    /// Undo/redo stack for channel documents.
+    pub history: PaintHistory,
     /// Set whenever pixels change so the GPU texture can be re-uploaded.
     pub dirty: bool,
     /// Monotonic counter bumped on every mutation (layers, brush stamps, UI edits).
@@ -81,6 +100,12 @@ impl Default for PaintState {
             tool: PaintTool::default(),
             blend: BlendMode::default(),
             clone_offset: (0.0, 0.0),
+            clone_source: None,
+            mask_paint: false,
+            symmetry_x: false,
+            symmetry_y: false,
+            fill_tolerance: 0.1,
+            history: PaintHistory::new(),
             dirty: false,
             revision: 0,
         }
@@ -131,84 +156,110 @@ impl PaintState {
         self.revision += 1;
     }
 
-    /// Paint a single brush dab at pixel `(x, y)` on the active channel.
-    ///
-    /// When the active tool is [`PaintTool::Clone`] the layer directly below
-    /// the active one is sampled using `clone_offset`.
+    /// Paint a single brush dab at pixel `(x, y)` on the active channel,
+    /// honouring the X/Y symmetry flags and mask-paint mode.
     pub fn stamp(&mut self, x: f32, y: f32) {
-        let Self {
-            document,
-            roughness,
-            metalness,
-            normal,
-            emissive,
-            channel,
-            brush,
-            tool,
-            blend,
-            clone_offset,
-            dirty,
-            revision,
-        } = self;
-
-        let target = match *channel {
-            PaintChannel::BaseColor => document,
-            PaintChannel::Roughness => roughness,
-            PaintChannel::Metalness => metalness,
-            PaintChannel::Normal => normal,
-            PaintChannel::Emissive => emissive,
-        };
-
-        if paint_dab(
-            target,
-            brush,
-            *tool,
-            *blend,
-            *clone_offset,
-            None,
-            (x, y),
-        ) {
-            *dirty = true;
-            *revision += 1;
+        for (px, py) in self.mirror_points(x, y) {
+            self.stamp_one(px, py);
         }
     }
 
-    /// Stamp a straight stroke between two points on the active channel.
+    /// Alias for [`Self::stamp`] used by callers that already handle symmetry.
+    pub fn dab_at(&mut self, x: f32, y: f32) {
+        self.stamp(x, y);
+    }
+
+    /// Stamp a straight stroke between two points on the active channel,
+    /// applying symmetry and mask-paint mode.
     pub fn stroke(&mut self, from: (f32, f32), to: (f32, f32)) {
-        let Self {
-            document,
-            roughness,
-            metalness,
-            normal,
-            emissive,
-            channel,
-            brush,
-            tool,
-            blend,
-            clone_offset,
-            dirty,
-            revision,
-        } = self;
+        for (a, b) in self.mirror_segments(from, to) {
+            self.stroke_one(a, b);
+        }
+    }
 
-        let target = match *channel {
-            PaintChannel::BaseColor => document,
-            PaintChannel::Roughness => roughness,
-            PaintChannel::Metalness => metalness,
-            PaintChannel::Normal => normal,
-            PaintChannel::Emissive => emissive,
-        };
+    /// Mirror points for symmetry flags, with duplicates removed.
+    pub fn mirror_points(&self, x: f32, y: f32) -> Vec<(f32, f32)> {
+        let (width, height) = self.canvas_size();
+        let mx = (width as f32 - 1.0) - x;
+        let my = (height as f32 - 1.0) - y;
+        let mut points = vec![(x, y)];
+        if self.symmetry_x {
+            points.push((mx, y));
+        }
+        if self.symmetry_y {
+            points.push((x, my));
+        }
+        if self.symmetry_x && self.symmetry_y {
+            points.push((mx, my));
+        }
+        points.dedup();
+        points
+    }
 
-        if paint_dab(
-            target,
-            brush,
-            *tool,
-            *blend,
-            *clone_offset,
-            Some(from),
-            to,
-        ) {
-            *dirty = true;
-            *revision += 1;
+    /// Mirror a segment for symmetry flags, with duplicates removed.
+    pub fn mirror_segments(
+        &self,
+        from: (f32, f32),
+        to: (f32, f32),
+    ) -> Vec<((f32, f32), (f32, f32))> {
+        let starts = self.mirror_points(from.0, from.1);
+        let ends = self.mirror_points(to.0, to.1);
+        let mut segments: Vec<((f32, f32), (f32, f32))> = starts.into_iter().zip(ends).collect();
+        segments.dedup();
+        segments
+    }
+
+    fn stamp_one(&mut self, x: f32, y: f32) {
+        let brush = self.brush.clone();
+        let tool = self.tool;
+        let blend = self.blend;
+        let clone_offset = self.clone_offset;
+        let channel = self.channel;
+
+        if self.mask_paint {
+            let (width, height) = self.canvas_size();
+            let document = self.document_mut(channel);
+            let Some(layer) = document.active_layer_mut() else {
+                return;
+            };
+            let mask = layer.ensure_mask(width, height);
+            MaskSession::new(&brush, tool).dab(mask, x, y);
+            self.dirty = true;
+            self.revision += 1;
+            return;
+        }
+
+        let document = self.document_mut(channel);
+        if paint_dab(document, &brush, tool, blend, clone_offset, None, (x, y)) {
+            self.dirty = true;
+            self.revision += 1;
+        }
+    }
+
+    fn stroke_one(&mut self, from: (f32, f32), to: (f32, f32)) {
+        let brush = self.brush.clone();
+        let tool = self.tool;
+        let blend = self.blend;
+        let clone_offset = self.clone_offset;
+        let channel = self.channel;
+
+        if self.mask_paint {
+            let (width, height) = self.canvas_size();
+            let document = self.document_mut(channel);
+            let Some(layer) = document.active_layer_mut() else {
+                return;
+            };
+            let mask = layer.ensure_mask(width, height);
+            MaskSession::new(&brush, tool).stroke_to(mask, from, to);
+            self.dirty = true;
+            self.revision += 1;
+            return;
+        }
+
+        let document = self.document_mut(channel);
+        if paint_dab(document, &brush, tool, blend, clone_offset, Some(from), to) {
+            self.dirty = true;
+            self.revision += 1;
         }
     }
 
@@ -233,10 +284,316 @@ impl PaintState {
         self.revision += 1;
     }
 
-    pub fn add_layer(&mut self) {
-        self.active_document_mut().add_layer();
+    /// Record the current channel document before a mutation so it can be undone.
+    pub fn begin_edit(&mut self) {
+        let channel = self.channel;
+        let document = self.document_for(channel).clone();
+        self.history.record(channel, &document);
+    }
+
+    /// Mark the canvas dirty after a mutation (pairs with [`Self::begin_edit`]).
+    pub fn end_edit(&mut self) {
         self.dirty = true;
         self.revision += 1;
+    }
+
+    pub fn can_undo(&self) -> bool {
+        self.history.can_undo()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        self.history.can_redo()
+    }
+
+    /// Restore the previous document snapshot. Returns `false` when empty.
+    pub fn undo(&mut self) -> bool {
+        let channel = self.channel;
+        let current = self.document_for(channel).clone();
+        match self.history.undo(channel, current) {
+            Some(snapshot) => {
+                *self.document_mut(snapshot.channel) = snapshot.document;
+                self.channel = snapshot.channel;
+                self.dirty = true;
+                self.revision += 1;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Re-apply a previously undone snapshot. Returns `false` when empty.
+    pub fn redo(&mut self) -> bool {
+        let channel = self.channel;
+        let current = self.document_for(channel).clone();
+        match self.history.redo(channel, current) {
+            Some(snapshot) => {
+                *self.document_mut(snapshot.channel) = snapshot.document;
+                self.channel = snapshot.channel;
+                self.dirty = true;
+                self.revision += 1;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Create the mask on the active layer (no-op when it already exists).
+    pub fn ensure_active_mask(&mut self) {
+        let (width, height) = self.canvas_size();
+        let channel = self.channel;
+        if let Some(layer) = self.document_mut(channel).active_layer_mut() {
+            layer.ensure_mask(width, height);
+            self.dirty = true;
+            self.revision += 1;
+        }
+    }
+
+    /// Fill the active layer mask with one greyscale value (`255` = reveal all).
+    pub fn fill_active_mask(&mut self, value: u8) -> bool {
+        let channel = self.channel;
+        let changed = match self.document_mut(channel).active_layer_mut() {
+            Some(layer) => layer.fill_mask(value),
+            None => false,
+        };
+        if changed {
+            self.dirty = true;
+            self.revision += 1;
+        }
+        changed
+    }
+
+    /// Remove the active layer mask entirely.
+    pub fn clear_active_mask(&mut self) -> bool {
+        let channel = self.channel;
+        let changed = match self.document_mut(channel).active_layer_mut() {
+            Some(layer) if layer.has_mask() => {
+                layer.clear_mask();
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            self.dirty = true;
+            self.revision += 1;
+        }
+        changed
+    }
+
+    /// Flood-fill the region under `(x, y)` on the active layer.
+    ///
+    /// Uses [`Self::fill_tolerance`] and paints the brush colour (or the mask
+    /// when [`Self::mask_paint`] is set). Returns the number of painted pixels.
+    pub fn fill_region(&mut self, x: u32, y: u32) -> usize {
+        let (width, height) = self.canvas_size();
+        let brush = self.brush.clone();
+        let blend = self.blend;
+        let tool = self.tool;
+        let tolerance = self.fill_tolerance;
+        let mask_paint = self.mask_paint;
+        let channel = self.channel;
+
+        let current = self.document_for(channel).clone();
+        self.history.record(channel, &current);
+
+        let filled = {
+            let document = self.document_mut(channel);
+            let Some(layer) = document.active_layer_mut() else {
+                return 0;
+            };
+            if mask_paint {
+                let value = MaskSession::new(&brush, tool).value();
+                let mask = layer.ensure_mask(width, height);
+                flood_fill(
+                    mask,
+                    x,
+                    y,
+                    Rgba::grey(value),
+                    tolerance,
+                    brush.opacity,
+                    BlendMode::Normal,
+                )
+            } else {
+                flood_fill(
+                    &mut layer.pixels,
+                    x,
+                    y,
+                    brush.color,
+                    tolerance,
+                    brush.opacity,
+                    blend,
+                )
+            }
+        };
+
+        if filled > 0 {
+            self.dirty = true;
+            self.revision += 1;
+        }
+        filled
+    }
+
+    /// Sample the composited active channel at `(x, y)` into the brush colour.
+    pub fn pick_color(&mut self, x: u32, y: u32) -> Option<Rgba> {
+        let composite = self.active_document().composite();
+        if x >= composite.width || y >= composite.height {
+            return None;
+        }
+        let sampled = composite.get(x, y);
+        self.brush.color = Rgba::opaque(sampled.r, sampled.g, sampled.b);
+        Some(sampled)
+    }
+
+    /// Write the whole paint session to a `.pfp` project file.
+    pub fn save_project(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        save::save(self, path)
+    }
+
+    /// Replace this session with one loaded from a `.pfp` project file.
+    pub fn load_project(path: impl AsRef<std::path::Path>) -> Result<Self, PaintSaveError> {
+        save::load(path)
+    }
+
+    pub fn add_layer(&mut self) {
+        self.begin_edit();
+        self.active_document_mut().add_layer();
+        self.end_edit();
+    }
+
+    /// Copy the active layer (pixels, mask, blend, opacity) directly above it.
+    pub fn duplicate_active_layer(&mut self) -> bool {
+        if self.active_document().active_layer().is_none() {
+            return false;
+        }
+        self.begin_edit();
+        let changed = self.active_document_mut().duplicate_active_layer();
+        if changed {
+            self.end_edit();
+        }
+        changed
+    }
+
+    /// Rename the active layer. Returns `false` when unchanged or missing.
+    pub fn rename_active_layer(&mut self, name: impl Into<String>) -> bool {
+        let name = name.into();
+        let channel = self.channel;
+        match self.active_document().active_layer() {
+            Some(layer) if layer.name != name => {}
+            _ => return false,
+        }
+        self.begin_edit();
+        if let Some(layer) = self.document_mut(channel).active_layer_mut() {
+            layer.name = name;
+        }
+        self.end_edit();
+        true
+    }
+
+    /// Show/hide a layer by index. Returns `false` when unchanged or missing.
+    pub fn set_layer_visible(&mut self, index: usize, visible: bool) -> bool {
+        let channel = self.channel;
+        match self.document_for(channel).layers.get(index) {
+            Some(layer) if layer.visible != visible => {}
+            _ => return false,
+        }
+        self.begin_edit();
+        if let Some(layer) = self.document_mut(channel).layers.get_mut(index) {
+            layer.visible = visible;
+        }
+        self.end_edit();
+        true
+    }
+
+    pub fn set_active_layer_visible(&mut self, visible: bool) -> bool {
+        let index = self.active_document().active;
+        self.set_layer_visible(index, visible)
+    }
+
+    /// Set the active layer opacity (`0..=1`). Returns `false` when unchanged.
+    pub fn set_active_layer_opacity(&mut self, opacity: f32) -> bool {
+        let opacity = opacity.clamp(0.0, 1.0);
+        let channel = self.channel;
+        match self.active_document().active_layer() {
+            Some(layer) if (layer.opacity - opacity).abs() > f32::EPSILON => {}
+            _ => return false,
+        }
+        self.begin_edit();
+        if let Some(layer) = self.document_mut(channel).active_layer_mut() {
+            layer.opacity = opacity;
+        }
+        self.end_edit();
+        true
+    }
+
+    /// Set the active layer blend mode. Returns `false` when unchanged.
+    pub fn set_active_layer_blend(&mut self, blend: BlendMode) -> bool {
+        let channel = self.channel;
+        match self.active_document().active_layer() {
+            Some(layer) if layer.blend != blend => {}
+            _ => return false,
+        }
+        self.begin_edit();
+        if let Some(layer) = self.document_mut(channel).active_layer_mut() {
+            layer.blend = blend;
+        }
+        self.end_edit();
+        true
+    }
+
+    /// Move the active layer up one slot. Returns `false` at the top.
+    pub fn move_active_layer_up(&mut self) -> bool {
+        let channel = self.channel;
+        let document = self.document_for(channel);
+        if document.layers.is_empty() || document.active + 1 >= document.layers.len() {
+            return false;
+        }
+        self.begin_edit();
+        let changed = self.document_mut(channel).move_active_up();
+        if changed {
+            self.end_edit();
+        }
+        changed
+    }
+
+    /// Move the active layer down one slot. Returns `false` at the bottom.
+    pub fn move_active_layer_down(&mut self) -> bool {
+        let channel = self.channel;
+        let document = self.document_for(channel);
+        if document.active == 0 {
+            return false;
+        }
+        self.begin_edit();
+        let changed = self.document_mut(channel).move_active_down();
+        if changed {
+            self.end_edit();
+        }
+        changed
+    }
+
+    /// Merge the active layer into the layer below (bakes opacity/blend/mask).
+    pub fn merge_active_layer_down(&mut self) -> bool {
+        let document = self.active_document();
+        if document.active == 0 || document.layers.len() < 2 {
+            return false;
+        }
+        self.begin_edit();
+        let changed = self.active_document_mut().merge_active_down();
+        if changed {
+            self.end_edit();
+        }
+        changed
+    }
+
+    /// Flatten all visible layers into a single layer.
+    pub fn flatten_layers(&mut self) -> bool {
+        if self.active_document().layers.len() < 2 {
+            return false;
+        }
+        self.begin_edit();
+        let changed = self.active_document_mut().flatten();
+        if changed {
+            self.end_edit();
+        }
+        changed
     }
 
     pub fn remove_active_layer(&mut self) {
@@ -482,5 +839,224 @@ mod tests {
             let bytes = std::fs::read(&path).unwrap();
             assert_eq!(&bytes[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
         }
+    }
+
+    fn hard_brush(state: &mut PaintState) {
+        state.brush.size = 8.0;
+        state.brush.hardness = 1.0;
+        state.brush.opacity = 1.0;
+        state.brush.flow = 1.0;
+        state.brush.color = red();
+    }
+
+    #[test]
+    fn symmetry_mirrors_dabs_horizontally() {
+        let mut state = PaintState::default();
+        state.document = PaintDocument::empty(32, 32);
+        hard_brush(&mut state);
+        state.symmetry_x = true;
+
+        state.stamp(8.0, 16.0);
+
+        let layer = state.document.active_layer().unwrap();
+        assert_eq!(layer.pixels.get(8, 16).r, 255);
+        assert_eq!(layer.pixels.get(23, 16).r, 255);
+    }
+
+    #[test]
+    fn mask_paint_writes_mask_not_pixels() {
+        let mut state = PaintState::default();
+        state.document = PaintDocument::empty(16, 16);
+        hard_brush(&mut state);
+        state.brush.color = Rgba::opaque(255, 255, 255);
+        state.mask_paint = true;
+
+        state.stamp(8.0, 8.0);
+
+        let layer = state.document.active_layer().unwrap();
+        let mask = layer.mask.as_ref().expect("mask created");
+        assert_eq!(mask.get(8, 8).r, 255);
+        assert_eq!(layer.pixels.get(8, 8).a, 0);
+    }
+
+    #[test]
+    fn fill_region_fills_and_is_undoable() {
+        let mut state = PaintState::default();
+        state.document = PaintDocument::empty(8, 8);
+        hard_brush(&mut state);
+        state.fill_tolerance = 0.0;
+
+        let filled = state.fill_region(0, 0);
+
+        assert_eq!(filled, 64);
+        assert_eq!(state.document.composite().get(0, 0).r, 255);
+        assert!(state.can_undo());
+
+        assert!(state.undo());
+        assert_eq!(state.document.composite().get(0, 0).r, 24);
+        assert!(state.can_redo());
+
+        assert!(state.redo());
+        assert_eq!(state.document.composite().get(0, 0).r, 255);
+    }
+
+    #[test]
+    fn pick_color_samples_composite() {
+        let mut state = PaintState::default();
+        state.document = PaintDocument::empty(4, 4);
+        state.brush.color = Rgba::opaque(10, 20, 30);
+        state.fill_active();
+
+        let picked = state.pick_color(2, 2).expect("in bounds");
+
+        assert_eq!((picked.r, picked.g, picked.b), (10, 20, 30));
+        assert_eq!(
+            (state.brush.color.r, state.brush.color.g, state.brush.color.b),
+            (10, 20, 30)
+        );
+    }
+
+    #[test]
+    fn layer_operations_are_undoable() {
+        let mut state = PaintState::default();
+        state.document = PaintDocument::empty(8, 8);
+
+        assert!(state.rename_active_layer("Base"));
+        assert_eq!(state.document.active_layer().unwrap().name, "Base");
+        assert!(state.undo());
+        assert_eq!(state.document.active_layer().unwrap().name, "Layer 1");
+
+        assert!(state.set_active_layer_visible(false));
+        assert!(!state.document.active_layer().unwrap().visible);
+        assert!(state.undo());
+        assert!(state.document.active_layer().unwrap().visible);
+
+        assert!(state.set_active_layer_opacity(0.5));
+        assert!((state.document.active_layer().unwrap().opacity - 0.5).abs() < 1e-6);
+        assert!(state.undo());
+        assert!((state.document.active_layer().unwrap().opacity - 1.0).abs() < 1e-6);
+
+        assert!(state.set_active_layer_blend(BlendMode::Multiply));
+        assert_eq!(state.document.active_layer().unwrap().blend, BlendMode::Multiply);
+        assert!(state.undo());
+        assert_eq!(state.document.active_layer().unwrap().blend, BlendMode::Normal);
+
+        assert!(state.duplicate_active_layer());
+        assert_eq!(state.document.layers.len(), 2);
+        assert!(state.undo());
+        assert_eq!(state.document.layers.len(), 1);
+    }
+
+    #[test]
+    fn layer_reorder_is_undoable() {
+        let mut state = PaintState::default();
+        state.document = PaintDocument::empty(4, 4);
+        state.add_layer();
+        assert_eq!(state.document.layers.len(), 2);
+        assert_eq!(state.document.active, 1);
+
+        assert!(state.move_active_layer_down());
+        assert_eq!(state.document.active, 0);
+        assert!(state.undo());
+        assert_eq!(state.document.active, 1);
+
+        assert!(!state.move_active_layer_up());
+        assert!(state.move_active_layer_down());
+    }
+
+    #[test]
+    fn square_pattern_paints_corners_circle_does_not() {
+        let mut square = PaintState::default();
+        square.document = PaintDocument::empty(32, 32);
+        hard_brush(&mut square);
+        square.brush.pattern = PaintBrushPattern::Square;
+        square.stamp(16.0, 16.0);
+        assert_eq!(square.document.active_layer().unwrap().pixels.get(19, 19).a, 255);
+
+        let mut circle = PaintState::default();
+        circle.document = PaintDocument::empty(32, 32);
+        hard_brush(&mut circle);
+        circle.stamp(16.0, 16.0);
+        assert_eq!(circle.document.active_layer().unwrap().pixels.get(19, 19).a, 0);
+    }
+
+    #[test]
+    fn merge_down_bakes_opacity_and_is_undoable() {
+        let mut state = PaintState::default();
+        state.document = PaintDocument::empty(4, 4);
+        state
+            .document
+            .active_layer_mut()
+            .unwrap()
+            .pixels
+            .fill(Rgba::opaque(0, 0, 255));
+        state.add_layer();
+        state
+            .document
+            .active_layer_mut()
+            .unwrap()
+            .pixels
+            .fill(Rgba::opaque(255, 0, 0));
+        state.document.active_layer_mut().unwrap().opacity = 0.5;
+
+        assert!(state.merge_active_layer_down());
+
+        assert_eq!(state.document.layers.len(), 1);
+        assert_eq!(state.document.active, 0);
+        let px = state.document.active_layer().unwrap().pixels.get(1, 1);
+        assert!(px.r > 100 && px.b > 100);
+        assert!(state.can_undo());
+        assert!(state.undo());
+        assert_eq!(state.document.layers.len(), 2);
+    }
+
+    #[test]
+    fn flatten_keeps_visible_layers_only() {
+        let mut state = PaintState::default();
+        state.document = PaintDocument::empty(4, 4);
+        state
+            .document
+            .active_layer_mut()
+            .unwrap()
+            .pixels
+            .fill(Rgba::opaque(0, 255, 0));
+        state.add_layer();
+        state
+            .document
+            .active_layer_mut()
+            .unwrap()
+            .pixels
+            .fill(Rgba::opaque(255, 0, 0));
+        state.document.layers[1].visible = false;
+
+        assert!(state.flatten_layers());
+
+        assert_eq!(state.document.layers.len(), 1);
+        let px = state.document.layers[0].pixels.get(2, 2);
+        assert_eq!((px.r, px.g), (0, 255));
+        assert!(state.undo());
+        assert_eq!(state.document.layers.len(), 2);
+    }
+
+    #[test]
+    fn clone_tool_samples_layer_below() {
+        let mut state = PaintState::default();
+        state.document = PaintDocument::empty(8, 8);
+        state
+            .document
+            .active_layer_mut()
+            .unwrap()
+            .pixels
+            .fill(Rgba::opaque(0, 255, 0));
+        state.add_layer();
+        hard_brush(&mut state);
+        state.tool = PaintTool::Clone;
+        state.clone_offset = (0.0, 0.0);
+
+        state.stamp(4.0, 4.0);
+
+        let px = state.document.active_layer().unwrap().pixels.get(4, 4);
+        assert_eq!((px.r, px.g), (0, 255));
+        assert_eq!(px.a, 255);
     }
 }

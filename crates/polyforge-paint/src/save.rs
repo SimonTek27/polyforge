@@ -8,10 +8,10 @@
 //!
 //! ```text
 //! magic    "PFPNT"     5 bytes
-//! version  u8          = 1
+//! version  u8          = 2
 //! channel  u8          active PaintChannel
 //! document x5          BaseColor, Roughness, Metalness, Normal, Emissive
-//! brush                size/opacity/flow/hardness/spacing/colour,
+//! brush                size/opacity/flow/hardness/spacing/colour/pattern,
 //!                      tool, blend, clone offset, mask/tuning flags
 //! ```
 //!
@@ -24,12 +24,13 @@ use std::path::Path;
 
 use crate::raster::RasterImage;
 use crate::types::{
-    BlendMode, BrushSettings, PaintChannel, PaintDocument, PaintLayer, PaintTool, Rgba,
+    BlendMode, BrushSettings, PaintBrushPattern, PaintChannel, PaintDocument, PaintLayer, PaintTool,
+    Rgba,
 };
 use crate::PaintState;
 
 const MAGIC: &[u8; 5] = b"PFPNT";
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 
 const FLAG_VISIBLE: u8 = 1 << 0;
 const FLAG_HAS_MASK: u8 = 1 << 1;
@@ -52,6 +53,8 @@ pub enum PaintSaveError {
     UnknownBlend(u8),
     /// A tool byte was unknown.
     UnknownTool(u8),
+    /// A brush-pattern byte was unknown.
+    UnknownPattern(u8),
     /// A channel byte was unknown.
     UnknownChannel(u8),
     /// Underlying I/O failure.
@@ -68,6 +71,7 @@ impl fmt::Display for PaintSaveError {
             PaintSaveError::InvalidLayers => write!(f, "invalid layer stack"),
             PaintSaveError::UnknownBlend(b) => write!(f, "unknown blend mode {b}"),
             PaintSaveError::UnknownTool(t) => write!(f, "unknown tool {t}"),
+            PaintSaveError::UnknownPattern(p) => write!(f, "unknown brush pattern {p}"),
             PaintSaveError::UnknownChannel(c) => write!(f, "unknown channel {c}"),
             PaintSaveError::Io(e) => write!(f, "{e}"),
         }
@@ -120,6 +124,23 @@ fn tool_from(code: u8) -> Result<PaintTool, PaintSaveError> {
     })
 }
 
+fn pattern_code(pattern: PaintBrushPattern) -> u8 {
+    match pattern {
+        PaintBrushPattern::Circle => 0,
+        PaintBrushPattern::Square => 1,
+        PaintBrushPattern::Diamond => 2,
+    }
+}
+
+fn pattern_from(code: u8) -> Result<PaintBrushPattern, PaintSaveError> {
+    Ok(match code {
+        0 => PaintBrushPattern::Circle,
+        1 => PaintBrushPattern::Square,
+        2 => PaintBrushPattern::Diamond,
+        other => return Err(PaintSaveError::UnknownPattern(other)),
+    })
+}
+
 fn channel_code(channel: PaintChannel) -> u8 {
     match channel {
         PaintChannel::BaseColor => 0,
@@ -163,6 +184,7 @@ pub fn encode(state: &PaintState) -> Vec<u8> {
         out.extend_from_slice(&value.to_le_bytes());
     }
     out.extend_from_slice(&brush.color.to_array());
+    out.push(pattern_code(brush.pattern));
     out.push(tool_code(state.tool));
     out.push(blend_code(state.blend));
     out.extend_from_slice(&state.clone_offset.0.to_le_bytes());
@@ -206,6 +228,7 @@ pub fn decode(bytes: &[u8]) -> Result<PaintState, PaintSaveError> {
         hardness: reader.f32()?,
         spacing: reader.f32()?,
         color: Rgba::from_array(reader.array4()?),
+        pattern: pattern_from(reader.u8()?)?,
     };
     state.tool = tool_from(reader.u8()?)?;
     state.blend = blend_from(reader.u8()?)?;
@@ -385,6 +408,7 @@ mod tests {
         state.fill_tolerance = 0.33;
         state.brush.size = 17.0;
         state.brush.color = Rgba::opaque(1, 2, 3);
+        state.brush.pattern = PaintBrushPattern::Diamond;
         state
     }
 
@@ -408,6 +432,7 @@ mod tests {
         assert!((decoded.fill_tolerance - 0.33).abs() < 1e-6);
         assert_eq!(decoded.brush.size, 17.0);
         assert_eq!(decoded.brush.color, Rgba::opaque(1, 2, 3));
+        assert_eq!(decoded.brush.pattern, PaintBrushPattern::Diamond);
         assert!(decoded.dirty);
     }
 

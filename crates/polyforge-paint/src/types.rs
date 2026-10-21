@@ -91,6 +91,36 @@ impl PaintTool {
     }
 }
 
+/// Shape of an individual brush dab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PaintBrushPattern {
+    /// Round dab (default).
+    #[default]
+    Circle,
+    /// Axis-aligned square dab.
+    Square,
+    /// Rotated square (diamond) dab.
+    Diamond,
+}
+
+impl PaintBrushPattern {
+    pub fn label(self) -> &'static str {
+        match self {
+            PaintBrushPattern::Circle => "Circle",
+            PaintBrushPattern::Square => "Square",
+            PaintBrushPattern::Diamond => "Diamond",
+        }
+    }
+
+    pub fn all() -> [PaintBrushPattern; 3] {
+        [
+            PaintBrushPattern::Circle,
+            PaintBrushPattern::Square,
+            PaintBrushPattern::Diamond,
+        ]
+    }
+}
+
 /// PBR texture channel being painted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PaintChannel {
@@ -187,6 +217,8 @@ pub struct BrushSettings {
     pub color: Rgba,
     /// Dab spacing as a fraction of `size` (0.05..=1.0).
     pub spacing: f32,
+    /// Shape of each dab.
+    pub pattern: PaintBrushPattern,
 }
 
 impl Default for BrushSettings {
@@ -198,6 +230,7 @@ impl Default for BrushSettings {
             hardness: 0.6,
             color: Rgba::opaque(220, 90, 60),
             spacing: 0.2,
+            pattern: PaintBrushPattern::Circle,
         }
     }
 }
@@ -417,6 +450,65 @@ impl PaintDocument {
             composite_layer(&mut out, layer);
         }
         out
+    }
+
+    /// Merge the active layer into the one below it.
+    ///
+    /// The upper layer's opacity, blend mode and mask are baked into the lower
+    /// layer's pixels, then the upper layer is removed. Returns `false` when
+    /// the active layer is already the bottom layer.
+    pub fn merge_active_down(&mut self) -> bool {
+        if self.active == 0 || self.active >= self.layers.len() {
+            return false;
+        }
+        let upper_index = self.active;
+        let lower_index = upper_index - 1;
+        {
+            let (below, above) = self.layers.split_at_mut(upper_index);
+            let lower = &mut below[lower_index];
+            let upper = &above[0];
+            if upper.visible && upper.opacity > 0.0 {
+                let count = (lower.pixels.width * lower.pixels.height) as usize;
+                let opacity = upper.opacity.clamp(0.0, 1.0);
+                for i in 0..count {
+                    let src = upper.pixels.pixel_at(i);
+                    if src.a == 0 {
+                        continue;
+                    }
+                    let coverage = opacity * upper.mask_coverage(i);
+                    if coverage <= 0.0 {
+                        continue;
+                    }
+                    let dst = lower.pixels.pixel_at(i);
+                    let blended = RasterImage::blend(dst, src, coverage, upper.blend);
+                    lower.pixels.set_index(i, blended);
+                }
+            }
+        }
+        self.layers.remove(upper_index);
+        self.active = lower_index;
+        true
+    }
+
+    /// Flatten all visible layers into a single layer (transparent background).
+    ///
+    /// Returns `false` when there is nothing to flatten.
+    pub fn flatten(&mut self) -> bool {
+        if self.layers.len() <= 1 {
+            return false;
+        }
+        let mut out = RasterImage::new(self.width, self.height);
+        for layer in &self.layers {
+            if !layer.visible || layer.opacity <= 0.0 {
+                continue;
+            }
+            composite_layer(&mut out, layer);
+        }
+        let mut merged = PaintLayer::new("Flattened", self.width, self.height);
+        merged.pixels = out;
+        self.layers = vec![merged];
+        self.active = 0;
+        true
     }
 }
 
